@@ -8,3 +8,4 @@ Ex: `from nems import ModelSpec`
 '''
 
 from nems.modelspec import ModelSpec
+from nems.recording import Recording
