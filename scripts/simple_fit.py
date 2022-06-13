@@ -90,10 +90,21 @@ model = ModelSpec().add_modules(modules)
 model.fit(stimulus=stimulus, response=response, backend='scipy')
 
 # Predict the response to the stimulus.
+prediction = model.predict(stimulus, backend='tf')
+
 # NOTE: switched backends here to point out that a model should be able to
 # interchange backends. I.e. after the fit is finished, parameters are stored in
-# the Modules in a backend-agnostic fashion.
-prediction = model.predict(stimulus, backend='tf')
+# the Modules in a backend-agnostic fashion. This should also make it easier
+# to validate backends against each other, e.g.:
+model.fit(backend='tf')
+prediction = model.predict(backend='tf')
+model.fit(backend='scipy', reset_parameters=True)
+same_prediction = model.predict(backend='scipy')
+prediction == same_prediction
+
+# I don't love having to specify backend=x everywhere, but we could always add
+# something like
+model.set_default_backend('tf')
 
 
 # Some models will need more data than just stimulus response (or x and y)
