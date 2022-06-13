@@ -16,10 +16,10 @@ NOTE: Things that are currently missing/undecided:
                 `DoubleExponential()
 
             Would cause this transformation:
-            Recording('response': y, 'stimulus': x0)
+            Recording({'response': y, 'stimulus': x0})
             -->
-            Recording('response': y, 'stimulus': x0, 'prediction': x1,
-                      'DoubleExponential.output': x2)
+            Recording({'response': y, 'stimulus': x0, 'prediction': x1,
+                      'DoubleExponential.output': x2})
             (or just overwrite a single generic name like "output" to avoid
              keeping too many signals in memory)
 
@@ -52,6 +52,7 @@ import numpy as np
 from nems import ModelSpec, Recording
 from nems.modules import STRF, WeightChannels, FIR, DoubleExponential
 from nems.modules.base import Module
+from nems.models import LN_STRF
 
 # Assume user is able to somehow load their data and format responses as
 # as a 2D numpy array, with dimensions T (time bins) x N (neurons). Other
@@ -133,10 +134,16 @@ modules = [
 model = ModelSpec().add_modules(modules)
 
 # We fit as before, but provide the recording in place of individual data
-# variables. Note that we could have also used this approach for the first
-# example, by also supplying stimulus_name='stimulus'.
+# variables.
 model.fit(recording=recording, response_name='response', backend='scipy')
 
 # There's no need to separately generate a prediction since it will already be
 # represented as 'weighted_output' in the recording (unless we wanted to predict
 # response to a validation stimulus, for example).
+
+
+# Instead of specifying a custom model, we can also use a pre-built model.
+# (scipy is the default backend, so we don't actually need to specify it)
+LN_STRF.fit(recording=recording, stimulus_name='stimulus',
+            response_name='response')
+prediction = recording['output']
