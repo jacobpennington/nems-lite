@@ -76,11 +76,11 @@ stimulus, response = my_data_loader('/path/to/my/data.csv')
 
 # Build the model, which is a NEMS ModelSpec that composes the operations of
 # several Module instances.
-modules = [
+model = ModelSpec()
+model.add_modules(
     STRF(shape=(25,18)),  # Full-rank STRF, 25 temporal x 18 spectral bins
     DoubleExponential()   # Double-exponential nonlinearity
-]
-model = ModelSpec().add_modules(modules)
+)
 
 # Fit the model to the data. Any preprocessing should happen separately,
 # before this step. No inputs or outputs were specified for the Modules,
@@ -142,7 +142,10 @@ modules = [
     LinearWeighting(input=['LN_output', 'state', 'pupil'],
                     output='weighted_output')
 ]
-model = ModelSpec().add_modules(modules)
+model = ModelSpec(modules=modules)
+# Note that we passed a list of module instances to the constructor instead of
+# using the add_modules() method. These approaches are interchangeable.
+
 
 # We fit as before, but provide the recording in place of individual data
 # variables.
