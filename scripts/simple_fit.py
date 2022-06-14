@@ -45,6 +45,14 @@ NOTE: Things that are currently missing/undecided:
             and "variable the thing is encoded in" would be ideal. But I'm not
             coming up with any good ideas for that.
 
+      3) Default return behavior of model.fit(recording)? Should this:
+         a) Modify the recording in-place to add prediction (current NEMS).
+         b) Return a copy with the prediction in it (more memory, better style).
+         c) Do both, with inplace=True/False option.
+         d) Work on a copy but don't return it, i.e. require a separate
+            model.predict() call. I think this is more intuitive, but still
+            more memory similar to b.
+
 '''
 
 import numpy as np
@@ -135,6 +143,7 @@ recording = Recording({'stimulus': stimulus, 'response': response,
 # Now we build the ModelSpec as before, but we specify which Module receives
 # which input(s) during fitting. We'll also use a factorized, parameterized
 # STRF inplace of the full-rank version.
+# TODO: shorter keyword name for parameterization?
 modules = [
     WeightChannels(shape=(4,18), parameterization='gaussian', input='stimulus'),
     FIR(shape=(4, 25), parameterization='P3Z1'),
@@ -154,10 +163,21 @@ model.fit(recording=recording, response_name='response', backend='scipy')
 # There's no need to separately generate a prediction since it will already be
 # represented as 'weighted_output' in the recording (unless we wanted to predict
 # response to a validation stimulus, for example).
+# TODO: Going back and forth on this. Modifying the recording in-place when
+#       calling a method on a completely separate object is pretty bad form.
+#       Running through the model evaluation doesn't take that long, so would
+#       be better to just fit on a copy and expect a separate prediction call.
+#       But then you have two copies of the data in memory while fitting, which
+#       isn't ideal.
+#       Another option: make this work on a copy by default, but add an
+#       `inplace=True` kwarg for cases where memory is an issue.
 
 
-# Instead of specifying a custom model, we can also use a pre-built model.
-# (scipy is the default backend, so we don't actually need to specify it)
+# Instead of specifying a custom model, we can also use a pre-built model
+# (scipy is the default backend, so we don't actually need to specify it).
+# In this case we've also specified an output_name. Now the output of any
+# module that doesn't specify an output name will be called 'pred' instead
+# of 'output'.
 LN_STRF.fit(recording=recording, stimulus_name='stimulus',
-            response_name='response')
-prediction = recording['output']
+            response_name='response', output_name='pred')
+prediction = recording['pred']
