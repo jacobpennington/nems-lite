@@ -1,4 +1,5 @@
 import numpy as np
+from nems.registry import module
 
 class Module:
     """
@@ -87,6 +88,24 @@ class Module:
     def sample_from_priors(self):
         pass
 
+    def freeze_parameters(self):
+        # TODO: copy to something like fn_kwargs as before? could even automate
+        #       the dict updates somewhere to keep .evaluate() simple.
+        pass
+
+
+    # TODO: after working through this a bit (the phi & bounds -> vector stuff),
+    #       starting to think it makes more sense to keep this separate from
+    #       Module classes. Hard to think of a use-case where some one would
+    #       need to break the phi dict format, in which case the existing
+    #       functions would still work fine (just have model collect all the
+    #       phi dicts and pass them off). And these really clutter up the base
+    #       class with stuff that isn't directly related to Module evaluation.
+    #
+    #       Leaving in for now to illustrate the idea, but probably not needed
+    #       since the generic fn should work for all Modules. Would only be a
+    #       benefit if we want people to be able to define phi in other ways,
+    #       in which case they could also implement the vector mapping.
     def parameters_to_vector(self):
         """
         Return `self.parameters` formatted as list.
@@ -118,8 +137,8 @@ class Module:
         return vector
 
     def vector_to_parameters(self, vector):
-        '''
-        Convert vector back to a dictionary and update `self.parameters`.
+        """
+        Convert parameter vector to a dictionary and update `self.parameters`.
 
         Parameters
         ----------
@@ -133,7 +152,7 @@ class Module:
         >>> self.parameters
         {'baseline': 0, 'coefs': array([32, 41])}
 
-        '''
+        """
         index = 0
         parameter_template = self.parameters.copy()
         
@@ -151,6 +170,7 @@ class Module:
             self.parameters[k] = value
 
     def bounds_to_vector(self):
+        """Return `self.bounds` formatted as a list."""
         lb = {}
         ub = {}
         for name, phi in self.parameters.items():
@@ -182,6 +202,18 @@ class Module:
 
         return np.full_like(phi, value, dtype=np.float)
 
+    def description(self):
+        # TODO: ask Stephen about this. Included in his version, but isn't
+        #       a docstring sufficient? This just requires anyone that adds
+        #       a new Module to remember yet another function to overwrite,
+        #       otherwise we'll end up with a bunch of Modules spitting out
+        #       the base-class description.
+        pass
+
+    @module('Base')
+    def from_keyword(keyword):
+
+        return Module()
 
     # TODO: Alternatively, break old terminology a bit and use phi to refer to
     # the vectorized parameters only? Then this can look something like:
@@ -196,7 +228,7 @@ class Module:
     # friendly representation (dictionary).
     @property
     def phi(self):
-        '''Alias for `self.parameters`.'''
+        """Alias for `self.parameters`."""
         return self.parameters
 
     def evaluate(self, *args):  
@@ -240,3 +272,20 @@ class Module:
         """
 
         raise NotImplementedError(f'{self.__class__} has not defined evaluate.')
+
+    def tensorflow_layer(self):
+        """
+        Builds a `Tensorflow.keras.layers.Layer` equivalent to this Module.
+
+        TODO: How would this fit into the arbitrary input/output scheme that
+              .evaluate() uses for scipy optimization? Maybe it can't, since
+              Tensorflow already has its own way of managing the data flow.
+
+        TODO: should layers be instantiated at this point, or just return
+              the layer class? (probably with some frozen kwargs). Depends
+              on how the higher-level model builder is formated.
+
+        """
+        raise NotImplementedError(
+            f'{self.__class__} has not defined a Tensorflow implementation.'
+            )
