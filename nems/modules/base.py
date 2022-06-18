@@ -6,6 +6,7 @@ class Module:
     Encapsulates one data-transformation step of a NEMS ModelSpec.
 
     Base class for NEMS Modules.
+
     TODO / NOTE:
     1) Currently keeping phi the same (but renamed self.parameters for clarity)
        This means users need to stick to the dictionary format, which I think
@@ -13,18 +14,11 @@ class Module:
        scipy fitting.
 
        Thinking of going one layer deeper on classing as an alternative.
-       I.e. make a Phi or Parameters class that is 95% a wrapper on a dictionary,
-       but would be a sensible place to put parameterization functions. Not a
-       big difference either way, just enforces the phi format a little more
-       strongly. And if they mimic dicts properly, utility functions mentioned
-       above can still be the same.
-
-       Similar question for parameterization functions. Make them a tiny class
-       instead, to enforce structure? E.g. `GaussianCoefficients` instead of
-       `gaussian_coefficients`. Either way, I'd like to integrate them more
-       seemlessly into the phi dict. I.e. calling `Module.phi` would return
-       `{'coefficients': GaussianCoefficients(mean=x, std=y, shape=(3,2))}` but
-       `Module.parameters_to_vector()` returns `[[a,b],[c,d],[e,f]]`.
+       I.e. make a Phi or Parameters class that looks like a dict for users,
+       but uses a persistent vector representation under the hood. This would
+       speed up scipy fits (how much?) and provide a nice place for utility
+       functions that manage parameters but otherwise have nothing to do with
+       the module (like forming bounds arrays).
 
     2) Simple cache scheme for repeated evals? If the parameters don't change
        (like for frozen modules), we can skip a call to evaluate() and 
@@ -84,6 +78,25 @@ class Module:
 
     def __setitem__(self, key, val):
         self.parameters[key] = val
+
+    def __repr__(self):
+        return str(self.__class__)
+
+    # TODO: Alternatively, break old terminology a bit and use phi to refer to
+    # the vectorized parameters only? Then this can look something like:
+    #     ```
+    #     if self.phi_vector is None:
+    #         return parameters_to_vector()
+    #     else:
+    #         return self.phi_vector
+    #     ```
+    # This would make it easier to keep the difference clear when setting
+    # up methods/variables for mid-fit representation (vectorized) vs user
+    # friendly representation (dictionary).
+    @property
+    def phi(self):
+        """Alias for `self.parameters`."""
+        return self.parameters
 
     def sample_from_priors(self):
         pass
@@ -202,34 +215,17 @@ class Module:
 
         return np.full_like(phi, value, dtype=np.float)
 
-    def description(self):
-        # TODO: ask Stephen about this. Included in his version, but isn't
-        #       a docstring sufficient? This just requires anyone that adds
-        #       a new Module to remember yet another function to overwrite,
-        #       otherwise we'll end up with a bunch of Modules spitting out
-        #       the base-class description.
+    def to_json(self):
+        # TODO
         pass
 
-    @module('Base')
+    def from_json(json):
+        # TODO
+        pass
+
+    @module('base')
     def from_keyword(keyword):
-
         return Module()
-
-    # TODO: Alternatively, break old terminology a bit and use phi to refer to
-    # the vectorized parameters only? Then this can look something like:
-    #     ```
-    #     if self.phi_vector is None:
-    #         return parameters_to_vector()
-    #     else:
-    #         return self.phi_vector
-    #     ```
-    # This would make it easier to keep the difference clear when setting
-    # up methods/variables for mid-fit representation (vectorized) vs user
-    # friendly representation (dictionary).
-    @property
-    def phi(self):
-        """Alias for `self.parameters`."""
-        return self.parameters
 
     def evaluate(self, *args):  
         """Applies some mathematical operation to the argument(s).
@@ -273,9 +269,27 @@ class Module:
 
         raise NotImplementedError(f'{self.__class__} has not defined evaluate.')
 
-    def tensorflow_layer(self):
+    # TODO: is this really needed?
+    def description(self):
+        """Optional short description of `Module`'s function.
+        
+        Defaults to the docstring for self.evaluate if not overwritten.
+
+        Example
+        -------
+        def evaluate(self):
+            '''A really long docstring with citations and notes other stuff.'''
+            return a + np.exp(b-c)
+
+        def description(self):
+            return '''Implements a simple exponential: $a + e^{(b-c)}$'''
+
         """
-        Builds a `Tensorflow.keras.layers.Layer` equivalent to this Module.
+
+        return help(self.evaluate)
+
+    def tensorflow_layer(self):
+        """Builds a `Tensorflow.keras.layers.Layer` equivalent to this Module.
 
         TODO: How would this fit into the arbitrary input/output scheme that
               .evaluate() uses for scipy optimization? Maybe it can't, since
@@ -289,3 +303,15 @@ class Module:
         raise NotImplementedError(
             f'{self.__class__} has not defined a Tensorflow implementation.'
             )
+
+
+# TODO: What does this do? Looks like it imports all module modules (hah) in
+#       the same directory. But why? Ask Stephen. If it needs to stay, add
+#       documentation.
+
+# mods = glob.glob(join(dirname(__file__), "*.py"))
+# __all__ = [ basename(f)[:-3] for f in mods if isfile(f) and not f.endswith('__init__.py')]
+# for a in __all__:
+#     importlib.import_module(__name__ + "." + a)
+# del mods
+# del a

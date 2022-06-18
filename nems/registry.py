@@ -37,6 +37,10 @@ class Keyword:
         self.parse = parse
         self.source_string = source_string if source_string is not None else ''
 
+    def __repr__(self):
+        return str(self.parse(self.key))
+
+
 
 class KeywordRegistry:
     '''A collection of Keywords registered by the `@module` decorator.

@@ -48,6 +48,16 @@ class ModelSpec:
         for key in module_keys:
             self.modules[key].freeze_parameters()
 
+    def to_json(self):
+        # TODO
+        # iterate module.to_json + add metadata 
+        pass
+
+    def from_json(json):
+        # TODO
+        # store metadata, iterate module.from_json and invoke add_modules
+        pass
+
     # TODO: not real names, just to remind me what I mean. Added methods
     # for phi->vector->phi and bounds->vector conversion to modules. So need
     # to add a model-level version that just collects all the pieces for fit.
