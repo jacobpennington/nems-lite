@@ -20,6 +20,16 @@ class Module:
        functions that manage parameters but otherwise have nothing to do with
        the module (like forming bounds arrays).
 
+    1b) This is related to another problem I'm coming across: how to properly
+        document/enforce the parameter structure for each Module. Currently,
+        users are expected to either know the dict format (i.e. which parameters
+        are expected, whether they should be scalar or array, etc) or always
+        start with the defaults we provide. Documenting the parameters in
+        `Module.__init__()` is better than old NEMS, but I think using something
+        like a Phi class to explicitly require specific parameters with a given
+        shape (similar to declaring model variables in Tensorflow or other
+        packages) would be clearer.
+
     2) Simple cache scheme for repeated evals? If the parameters don't change
        (like for frozen modules), we can skip a call to evaluate() and 
        vector_to_parameters() on each fit iteration.
@@ -27,8 +37,8 @@ class Module:
     """
 
 
-    def __init__(self, input=None, output=None, name=None, parameters=None,
-                 bounds=None, priors=None):
+    def __init__(self, input=None, output=None, parameters=None,
+                 bounds=None, priors=None, name=None):
         """
         TODO
 
@@ -62,18 +72,21 @@ class Module:
         else:
             self.output = output
 
-        self.name = name if name is not None else 'Module'
+        self.name = name if name is not None else 'unnamed module'
         self.bounds = bounds
         self.priors = priors
+        self.parameters = parameters
         self.model = None  # pointer to parent ModelSpec
-
-        if parameters is not None:
-            self.parameters = parameters
-        else:
-            self.parameters = self.sample_from_priors()
 
 
     def __getitem__(self, key=None, default=None):
+        # TODO: If we want to expose priors, bounds, etc. as well this can be
+        #       `return getattr(self, key)` instead, but I think doing this for
+        #       just parameters makes more sense. That's the dict that gets
+        #       accessed the most, and this makes that require less typing:
+        #       `Module['a']` instead of `Module['parameters']['a'].`
+        #       The getattr version could also be confusing since not all of
+        #       the attributes are dicts (so further indexing won't always work)
         return self.parameters.get(key, default)
 
     def __setitem__(self, key, val):
@@ -99,7 +112,20 @@ class Module:
         return self.parameters
 
     def sample_from_priors(self):
-        pass
+        # TODO: Don't remember if Prior.sample() is actually correct, but
+        #       this should be pretty close. Come back to this.
+        parameters = {}
+        for key in self.parameters.keys():
+            parameters[key] = self.priors[key].sample()
+        return parameters
+
+    def mean_of_priors(self):
+        # TODO: Don't remember if Prior.mean() is actually correct, but
+        #       this should be pretty close. Come back to this.
+        parameters = {}
+        for key in self.parameters.keys():
+            parameters[key] = self.priors[key].mean()
+        return parameters
 
     def freeze_parameters(self):
         # TODO: copy to something like fn_kwargs as before? could even automate
@@ -216,15 +242,19 @@ class Module:
         return np.full_like(phi, value, dtype=np.float)
 
     def to_json(self):
-        # TODO
+        # TODO: package parameters, bounds, etc, into dict w/ same format as old
+        #       module dicts. Won't be fully backwards compatible but should
+        #       make it easier to write an old -> new model conversion utility.
         pass
 
     def from_json(json):
-        # TODO
+        # TODO: Reverse of above, return Module instance using dict for kwargs.
+        #       Some attributes may need to be set separately.
         pass
 
-    @module('base')
+    @module('baseclass')
     def from_keyword(keyword):
+        """TODO: doctring explaining how to use this in subclassed modules."""
         return Module()
 
     def evaluate(self, *args):  
@@ -303,6 +333,14 @@ class Module:
         raise NotImplementedError(
             f'{self.__class__} has not defined a Tensorflow implementation.'
             )
+
+    # TODO: Maybe don't need both of these? But I think it makes sense to split
+    #       them up, i.e. initialize would ta
+    def initial_parameters(self):
+        """TODO: docstring explaining idea, most subclasses will need to write
+        their own."""
+        return {}
+
 
 
 # TODO: What does this do? Looks like it imports all module modules (hah) in

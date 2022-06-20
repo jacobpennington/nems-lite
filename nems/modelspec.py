@@ -34,6 +34,9 @@ class ModelSpec:
             self.add_module(m)
 
     def add_module(self):
+        # TODO: in addition to adding to a .modules list (or dict or whatever),
+        #       set `module.model = self` so that each module has a pointer
+        #       to its parent Modelspec.
         pass
 
     def freeze_parameters(self, *module_keys):

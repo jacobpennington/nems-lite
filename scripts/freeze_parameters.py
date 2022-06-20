@@ -37,6 +37,15 @@ model.add_module(DoubleExponential(name='dexp'))
 # The values of these parameters will not be changed during fitting.
 model.freeze_parameters('wc', 'fir', 'lvl')
 # model.freeze_parameters(0, 1, 2)  # integer indexing would also work
+# TODO: reasoning behind adding the `name` kwarg was that integer indexing
+#       can get confusing / hard to read when coming back to code later on.
+#       However, this adds another layer of string references that are separate
+#       from keywords. Maybe better to have those be the same thing?
+#       I.e. if a keyword is specified, it's also the name (unless overwritten).
+#       If a name is specified, it's also a keyword for default options
+#       (unless overwritten). This comes with complications though, like dealing
+#       with  name clashes if there are multiple 'wc' keywords used in a model.
+
 
 # Fit the model again, using the previous fit as a starting point.
 model.fit(recording=recording, stimulus_name='stimulus',
@@ -46,7 +55,7 @@ model.fit(recording=recording, stimulus_name='stimulus',
 # Unfreeze the linear portion.
 model.unfreeze_parameters('wc', 'fir', 'lvl')
 # In this case, this is equivalent to unfreezing all modules, which we can
-# do by not specifying any names or indices:
+# do by *not* specifying any names or indices:
 # model.unfreeze_parameters()
 
 # Now perform a final fit of all modules simultaneously, using a finer
