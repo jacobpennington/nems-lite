@@ -75,8 +75,16 @@ class Module:
         self.name = name if name is not None else 'unnamed module'
         self.bounds = bounds
         self.priors = priors
-        self.parameters = parameters
         self.model = None  # pointer to parent ModelSpec
+
+        if parameters is None:
+            parameters = self.initial_parameters()
+        # TODO: should this be done automatically? maybe expose an option, like
+        #       `initialize_to_mean=True`? Either way needs more thought, this
+        #       would just overwrite initial.
+        # if self.priors is not None:
+        #     parameters = self.mean_of_priors()
+        self.parameters = parameters
 
 
     def __getitem__(self, key):
@@ -341,12 +349,10 @@ class Module:
             f'{self.__class__} has not defined a Tensorflow implementation.'
             )
 
-    # TODO: Maybe don't need both of these? But I think it makes sense to split
-    #       them up, i.e. initialize would ta
     def initial_parameters(self):
         """TODO: docstring explaining idea, most subclasses will need to write
         their own."""
-        return {}
+        return None
 
 
 
@@ -462,6 +468,10 @@ class Phi:
 class Variable:
     # TODO: should bounds and priors go here too (with relevant methods still
     #       exposed at the module level).
+
+    # TODO: is there a straightforward way to mimic a numpy array?
+    #       ex: would be nice to be able to use @ operator directly on a
+    #       coefficients variable instead of variable.values.
 
     def __init__(self, name, shape=(1,), dtype=np.float64, initial_value=0,
                  bounds=None, prior=None):
