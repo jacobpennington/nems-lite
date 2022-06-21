@@ -418,7 +418,7 @@ class Phi:
         return str(self._dict)
 
     # TODO: would need to propagate to/from_json calls from Module, and collect
-    #       json representations from Variables.
+    #       json representations from Variables, and store _vector.
     def to_json(self):
         pass
 
@@ -479,7 +479,8 @@ class Variable:
 
     @property
     def values(self):
-        return self.phi._vector[self.first_index:self.last_index+1]
+        values = self.phi._vector[self.first_index:self.last_index+1]
+        return np.reshape(values, self.shape)
 
     def update(self, value):
         if self.shape == (1,) and np.isscalar(value):
@@ -503,6 +504,8 @@ class Variable:
         return Variable(**data)
 
     def __repr__(self):
+        # TODO: how to fix format for printing? Apparently __repr__ always
+        #       ignores linebreak characters.
         string = (f"Variable(shape={self.shape}, dtype={self.dtype})"
                   f".values = {self.values}")
         return string
