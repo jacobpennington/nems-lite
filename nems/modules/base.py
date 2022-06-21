@@ -362,6 +362,7 @@ class Module:
 # del a
 
 
+
 class Phi:
     # TODO: Sketch of possible Phi and Variable classes. General idea:
     #       Variables make the structure of the Phi dictionary explicit and easy
@@ -407,16 +408,11 @@ class Phi:
 
     def add_variable(self, variable):
         variable.first_index = self.size
-        self.size += variable.values.size
+        self.size += variable.size
         variable.last_index = self.size-1
-        self._vector.extend(variable.values)
+        self._vector.extend([variable.initial_value]*variable.size)
         self._dict[variable.name] = variable
         variable.phi = self
-
-    def update(self, vector):
-        for variable in self._dict.values():
-            values = vector[variable.first_index:variable.last_index]
-            variable.update(values)
 
     def __str__(self):
         return str(self._dict)
@@ -440,11 +436,12 @@ class Phi:
             val = default
         return val
 
+    def update(self):
+        # TODO
+        pass
+
     def __setitem__(self, key, val):
-        variable = self._dict[key]
-        variable.update(val)
-        flat_values = np.ravel(val)
-        self._vector[variable.first_index:variable.last_index] = flat_values
+        self._dict[key].update(val)
 
     def __iter__(self):
         return iter(self._dict)
@@ -470,19 +467,31 @@ class Variable:
                  bounds=None, prior=None):
         self.name = name
         self.shape = shape
+        self.size = 1
+        for axis in shape:
+            self.size *= axis
         self.dtype = dtype
-        self.values = np.full(shape=shape, fill_value=initial_value)
+        self.initial_value = initial_value
+        # Must be set by Phi for .values to work.
+        self.phi = None  # Pointer to parent Phi instance.
+        self.first_index = None  # Location of data within Phi._vector
+        self.last_index = None
+
+    @property
+    def values(self):
+        return self.phi._vector[self.first_index:self.last_index+1]
 
     def update(self, value):
         if self.shape == (1,) and np.isscalar(value):
-            self.values[0] = value
+            self.phi._vector[self.first_index] = value
         elif np.shape(value) != self.shape:
             raise ValueError(
                 f"Variable {self.name} requires shape {self.shape}, but"
                 f"{value} has shape {np.shape(value)}"
             )
         else:
-            self.values[:] = value
+            flat_value = np.ravel(value)
+            self.phi._vector[self.first_index:self.last_index+1] = flat_value
 
     def to_json(self):
         data = {'name': self.name, 'shape': self.shape, 'dtype': self.dtype,
@@ -492,3 +501,13 @@ class Variable:
     def from_json(json):
         data = json.loads(json)
         return Variable(**data)
+
+    def __repr__(self):
+        string = (f"Variable(shape={self.shape}, dtype={self.dtype})"
+                  f".values = {self.values}")
+        return string
+
+    def __str__(self):
+        string = (f"Variable(shape={self.shape}, dtype={self.dtype})"
+                  f".values = {self.values}")
+        return string
