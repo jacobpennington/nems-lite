@@ -1,5 +1,9 @@
+import json
+
 import numpy as np
+
 from nems.registry import module
+
 
 class Module:
     """
@@ -29,10 +33,6 @@ class Module:
         like a Phi class to explicitly require specific parameters with a given
         shape (similar to declaring model variables in Tensorflow or other
         packages) would be clearer.
-
-    2) Simple cache scheme for repeated evals? If the parameters don't change
-       (like for frozen modules), we can skip a call to evaluate() and 
-       vector_to_parameters() on each fit iteration.
 
     """
 
@@ -79,7 +79,7 @@ class Module:
         self.model = None  # pointer to parent ModelSpec
 
 
-    def __getitem__(self, key=None, default=None):
+    def __getitem__(self, key):
         # TODO: If we want to expose priors, bounds, etc. as well this can be
         #       `return getattr(self, key)` instead, but I think doing this for
         #       just parameters makes more sense. That's the dict that gets
@@ -87,7 +87,14 @@ class Module:
         #       `Module['a']` instead of `Module['parameters']['a'].`
         #       The getattr version could also be confusing since not all of
         #       the attributes are dicts (so further indexing won't always work)
-        return self.parameters.get(key, default)
+        return self.parameters[key]
+    
+    def get(self, key, default=None):
+        if key in self.parameters:
+            val = self.parameters[key]
+        else:
+            val = default
+        return val
 
     def __setitem__(self, key, val):
         self.parameters[key] = val
@@ -353,3 +360,135 @@ class Module:
 #     importlib.import_module(__name__ + "." + a)
 # del mods
 # del a
+
+
+class Phi:
+    # TODO: Sketch of possible Phi and Variable classes. General idea:
+    #       Variables make the structure of the Phi dictionary explicit and easy
+    #       to document, Phi provides a dict-like interface for users but keeps
+    #       a persistent vector (list) representation under the hood.
+    #
+    #       In each module, this would be set up in .initial_parameters or
+    #       somewhere similar, along the lines of:
+    #       ```
+    #       self.parameters = Phi(
+    #           Variable(name='alpha'),
+    #           Variable(name='beta', shape=(3,2)),
+    #           Variable(name='gamma', dtype=np.float16),
+    #       )
+    #       ```
+    #       Would also make sense to include bounds here, probably as a property
+    #       of the Variables (and then the Phi class can easily collect them as
+    #       a bounds array for the start of optimization).
+    #
+    #       Another nice result of this (in my opinion) is that the string rep.
+    #       of phi would now look something like:
+    #       ```
+    #       print(self.parameters)
+    #       >>> {
+    #           'alpha': Variable(shape=(1,), dtype=float64)
+    #                    .values = 4.9029380298
+    #           'beta':  Variable(shape=(3,2), dtype=float64)
+    #                    .values = [[3.4445, 7.001],
+    #                               [0.44,   133.0],
+    #                               [0.858,  11.11]]
+    #           ...etc
+    #       }
+    #       ```
+    #       In other words, anyone can immediately see what format is expected
+    #       and we can put a little effort into a pretty-print __repr__ method.
+    
+    def __init__(self, *variables):
+        self._vector = []
+        self._dict = {}
+        self.size = 0
+        for v in variables:
+            self.add_variable(v)
+
+    def add_variable(self, variable):
+        variable.first_index = self.size
+        self.size += variable.values.size
+        variable.last_index = self.size-1
+        self._vector.extend(variable.values)
+        self._dict[variable.name] = variable
+        variable.phi = self
+
+    def update(self, vector):
+        for variable in self._dict.values():
+            values = vector[variable.first_index:variable.last_index]
+            variable.update(values)
+
+    def __str__(self):
+        return str(self._dict)
+
+    # TODO: would need to propagate to/from_json calls from Module, and collect
+    #       json representations from Variables.
+    def to_json(self):
+        pass
+
+    def from_json(json):
+        pass
+
+    # Provide dict-like interface
+    def __getitem__(self, key):
+        return self._dict[key]
+    
+    def get(self, key, default=None):
+        if key in self._dict:
+            val = self._dict[key]
+        else:
+            val = default
+        return val
+
+    def __setitem__(self, key, val):
+        variable = self._dict[key]
+        variable.update(val)
+        flat_values = np.ravel(val)
+        self._vector[variable.first_index:variable.last_index] = flat_values
+
+    def __iter__(self):
+        return iter(self._dict)
+
+    def keys(self):
+        return self._dict.keys()
+
+    def items(self):
+        return self._dict.items()
+
+    def values(self):
+        return self._dict.values()
+
+    def __repr__(self):
+        return str(self._dict)
+
+
+class Variable:
+    # TODO: should bounds and priors go here too (with relevant methods still
+    #       exposed at the module level).
+
+    def __init__(self, name, shape=(1,), dtype=np.float64, initial_value=0,
+                 bounds=None, prior=None):
+        self.name = name
+        self.shape = shape
+        self.dtype = dtype
+        self.values = np.full(shape=shape, fill_value=initial_value)
+
+    def update(self, value):
+        if self.shape == (1,) and np.isscalar(value):
+            self.values[0] = value
+        elif np.shape(value) != self.shape:
+            raise ValueError(
+                f"Variable {self.name} requires shape {self.shape}, but"
+                f"{value} has shape {np.shape(value)}"
+            )
+        else:
+            self.values[:] = value
+
+    def to_json(self):
+        data = {'name': self.name, 'shape': self.shape, 'dtype': self.dtype,
+                'values': self.values}
+        return json.dumps(data)
+
+    def from_json(json):
+        data = json.loads(json)
+        return Variable(**data)
