@@ -32,24 +32,10 @@ NOTE: Things that are currently missing/undecided:
             But still allow specific per-module inputs some other way, for
             state models etc. that depend on multiple inputs.
 
-      2) Sensible naming scheme in place of stimulus & response? (low priority)
-         a) Stimulus & Response are probably what most people would be using,
-            but what if some one is looking at encoding of pupil, behavior, etc.
-            without considering stimulus?
-         b) x, y (or similar) would be more general and reminiscent of sklearn,
-            Tensorflow, etc. This might be *too* general (i.e. we still want
-            to target comp. neuro), but would reinforce the idea that these are
-            really just placeholders and users should feel free to name signals
-            as whatever fits their data best.
-         c) I think general terms that represent "thing that is being encoded"
-            and "variable the thing is encoded in" would be ideal. But I'm not
-            coming up with any good ideas for that.
+      2) Replace stim/responose with input/output?? Or x/y, but either better
+         than stim/resp.
 
-      3) Default return behavior of model.fit(recording)? Should this:
-         a) Modify the recording in-place to add prediction (current NEMS).
-         b) Return a copy with the prediction in it (more memory, better style).
-         c) Do both, with inplace=True/False option.
-         d) Work on a copy but don't return it, i.e. require a separate
+      3) d) Work on a copy but don't return it, i.e. require a separate
             model.predict() call. I think this is more intuitive, but still
             more memory similar to b.
 
@@ -76,10 +62,11 @@ def my_data_loader(file_path):
     print(f'Loading data from {file_path}, but not really...')
     stimulus = np.random.random(size=(10000, 18))
     response = np.random.choice([0,1], size=(10000, 100), p=[0.99, 0.01])
+    pupil_size = np.random.random(size=(10000, 1))
 
-    return stimulus, response
+    return stimulus, response, state
 
-stimulus, response = my_data_loader('/path/to/my/data.csv')
+stimulus, response, pupil_size = my_data_loader('/path/to/my/data.csv')
 
 
 # Build the model, which is a NEMS ModelSpec that composes the operations of
@@ -95,7 +82,8 @@ model.add_modules(
 # so `stimulus` will be the input to the first module, and the output
 # of the first module will be the input to the second module.
 # NOTE: this gets around the problem of hard-coded signal names (I think)
-model.fit(stimulus=stimulus, response=response, backend='scipy')
+model.fit(stimulus=stimulus, response=response, state=pupil_size,
+          backend='scipy')
 
 # Predict the response to the stimulus.
 prediction = model.predict(stimulus, backend='tf')
@@ -136,9 +124,6 @@ stimulus, response, pupil, state = my_complicated_data_loader('/path/data.csv')
 # For a model that uses multiple inputs, we need to package the data into a
 # Recording. Each data variable will be converted to RasterizedSignal by default
 # (a wrapper around a Numpy array with some utility methods).
-recording = Recording.add_array_data(
-    {'stimulus': stimulus, 'response': response, 'pupil': pupil, 'state': state}
-    )
 
 # Now we build the ModelSpec as before, but we specify which Module receives
 # which input(s) during fitting. We'll also use a factorized, parameterized
@@ -154,6 +139,7 @@ modules = [
 model = ModelSpec(modules=modules)
 # Note that we passed a list of module instances to the constructor instead of
 # using the add_modules() method. These approaches are interchangeable.
+
 
 
 # We fit as before, but provide the recording in place of individual data

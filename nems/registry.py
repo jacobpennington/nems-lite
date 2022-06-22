@@ -15,7 +15,11 @@ class KeywordMissingError(Exception):
 
 
 class Keyword:
-    """Maps a Module to a string representation."""
+    """Maps a Module to a string representation.
+    
+    # TODO: explain expected format (no hypens or underscores, etc)
+
+    """
 
     def __init__(self, key, parse, source_string=None):
         """
