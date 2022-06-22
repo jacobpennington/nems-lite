@@ -133,19 +133,19 @@ class LinearWeighting(Module):
 stimulus, response, pupil, state = my_complicated_data_loader('/path/data.csv')
 
 
-# For a model that uses multiple inputs, we need to package all of the data
-# in a single NEMS Recording. Each data variable will be converted to a
-# NEMS RasterizedSignal by default (a wrapper around a Numpy array
-# with some utility methods).
-recording = Recording({'stimulus': stimulus, 'response': response,
-                       'pupil': pupil, 'state': state})
+# For a model that uses multiple inputs, we need to package the data into a
+# Recording. Each data variable will be converted to RasterizedSignal by default
+# (a wrapper around a Numpy array with some utility methods).
+recording = Recording.add_array_data(
+    {'stimulus': stimulus, 'response': response, 'pupil': pupil, 'state': state}
+    )
 
 # Now we build the ModelSpec as before, but we specify which Module receives
 # which input(s) during fitting. We'll also use a factorized, parameterized
 # STRF inplace of the full-rank version.
 # TODO: shorter keyword name for parameterization?
 modules = [
-    WeightChannels(shape=(4,18), parameterization='gaussian', input='stimulus'),
+    WeightChannels(shape=(18,4), parameterization='gaussian', input='stimulus'),
     FIR(shape=(4, 25), parameterization='P3Z1'),
     DoubleExponential(output='LN_output'),
     LinearWeighting(input=['LN_output', 'state', 'pupil'],

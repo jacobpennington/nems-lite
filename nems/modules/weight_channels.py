@@ -1,6 +1,12 @@
+import re
+
 import numpy as np
 
 from nems.modules.base import Module, Phi, Variable
+from nems.registry import module
+
+# TODO: double check all shape references after dealing w/ data order etc,
+#       make sure correct dims are lined up.
 
 
 class WeightChannels(Module):
@@ -211,6 +217,29 @@ class WeightChannelsV3(Module):
         """TODO: docstring, and check ordering on matrix multiplication."""
         y = [self.coefficients @ x for x in inputs]
         return y
+
+    @module('wc')
+    def from_keyword(keyword):
+        wc_class = WeightChannelsV3
+        kwargs = {}
+
+        options = keyword.split('.')
+        in_out_pattern = re.compile(r'^(\d{1,})x(\d{1,})$')
+        for op in options:
+            if 'x' in op:
+                parsed = re.fullmatch(in_out_pattern, op)
+                if parsed is not None:
+                    n_inputs = int(parsed.group(1))
+                    n_outputs = int(parsed.group(2))
+                    kwargs['shape'] = (n_inputs, n_outputs)
+
+            elif op == 'g':
+                wc_class = GaussianWeightChannelsV3
+
+        if 'shape' not in kwargs:
+            return ValueError("WeightChannels requires a shape, ex: `wc.18x4`")
+
+        return wc_class(**kwargs)
 
 
 class GaussianWeightChannelsV3(WeightChannelsV3):

@@ -1,3 +1,5 @@
+# TODO: should this go in nems.modules directory instead?
+
 import logging
 import inspect
 import re
