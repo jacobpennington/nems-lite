@@ -4,7 +4,7 @@ NOTE: This script does not actually work yet!
 
 """
 
-from nems import ModelSpec
+from nems import Model
 from nems.modules import STRF, WeightChannels, FIR, DoubleExponential
 from nems.registry import keyword_lib
 
@@ -13,15 +13,15 @@ keyword_lib.keywords
 
 
 # Build a model from keywords. The following are equivalent.
-model = ModelSpec.from_keywords('wc', 'fir', 'dexp')
-model = ModelSpec.from_keywords('wc-fir-dexp')
+model = Model.from_keywords('wc', 'fir', 'dexp')
+model = Model.from_keywords('wc-fir-dexp')
 
 keywords = ['wc', 'fir', 'dexp']
 modules = [keyword_lib[k] for k in keywords]
-model = ModelSpec(modules=modules)
+model = Model(modules=modules)
 
 modules = [WeightChannels, FIR, DoubleExponential]
-model = ModelSpec(modules=modules)
+model = Model(modules=modules)
 
 
 # Specify module options using keywords. The following are equivalent.

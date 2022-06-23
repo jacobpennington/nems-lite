@@ -1,6 +1,6 @@
-from nems import ModelSpec
+from nems.models.base import Model
 
-class LN_STRF(ModelSpec):
+class LN_STRF(Model):
     '''
     A ModelSpec with the following modules:
         1) WeightChannels(shape=(4, n_channels), parameterization='gaussian')

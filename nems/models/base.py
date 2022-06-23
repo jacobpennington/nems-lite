@@ -1,8 +1,9 @@
-class ModelSpec:
-    pass
-
-
-
+class Model:
+    default_input = 'stimulus'
+    default_output = 'prediction'
+    default_target = 'response'
+    default_state = 'state'
+    default_backend = 'scipy'
 
     def fit(self):
         # TODO: see `scripts/simple_fit.py` for ideas on how to format this.

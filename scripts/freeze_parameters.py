@@ -6,7 +6,7 @@ NOTE: This script does not actually work yet!
 
 import numpy as np
 
-from nems import ModelSpec, load_recording
+from nems import Model, load_recording
 from nems.modules import WeightChannels, FIR, LevelShift, DoubleExponential
 
 
@@ -18,7 +18,7 @@ from nems.modules import WeightChannels, FIR, LevelShift, DoubleExponential
 recording = load_recording
 
 # Build a simple linear model.
-model = ModelSpec()
+model = Model()
 model.add_modules(
     WeightChannels(shape=(4,18), name='wc'),
     FIR(shape=(4, 25), name='fir'),

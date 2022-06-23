@@ -6,34 +6,7 @@ style guide / planning document, i.e. this is what NEMS *should* do. When this
 workflow is actually functional, it should be converted into a jupyter notebook
 that uses some sample data from our lab and demonstrates some plotting/analysis.
 
-NOTE: Things that are currently missing/undecided:
-      1) How should input/output signals be specified for more general cases?
-         a) If input is specified, look for the recording signal with that name.
-            Otherwise, assume output of previous Module is the input. If output
-            is not named, call it '{module_name}.output' or something like that.
-
-            ex: `STRF(shape=(x,y), input='stimulus', output='prediction')`
-                `DoubleExponential()
-
-            Would cause this transformation:
-            Recording({'response': y, 'stimulus': x0})
-            -->
-            Recording({'response': y, 'stimulus': x0, 'prediction': x1,
-                      'DoubleExponential.output': x2})
-            (or just overwrite a single generic name like "output" to avoid
-             keeping too many signals in memory)
-
-         b) Akin to Tensorflow, specify "X,Y" (stimulus, response?) in fit call,
-            and just pass output through Modules in order (similar to above).
-
-            ex: `model.fit(stimulus=data_X, response=data_Y)`
-            or: `model.fit(x=Recording('stim'), y=Recording('resp'))
-
-            But still allow specific per-module inputs some other way, for
-            state models etc. that depend on multiple inputs.
-
-      2) Replace stim/responose with input/output?? Or x/y, but either better
-         than stim/resp.
+NOTE: Things that are currently missing/undecided
 
       3) d) Work on a copy but don't return it, i.e. require a separate
             model.predict() call. I think this is more intuitive, but still
@@ -43,7 +16,7 @@ NOTE: Things that are currently missing/undecided:
 
 import numpy as np
 
-from nems import ModelSpec, Recording
+from nems import Model, Recording
 from nems.modules import STRF, WeightChannels, FIR, DoubleExponential
 from nems.modules.base import Module
 from nems.models import LN_STRF
@@ -69,9 +42,9 @@ def my_data_loader(file_path):
 stimulus, response, pupil_size = my_data_loader('/path/to/my/data.csv')
 
 
-# Build the model, which is a NEMS ModelSpec that composes the operations of
+# Build the model, which is a NEMS Model that composes the operations of
 # several Module instances.
-model = ModelSpec()
+model = Model()
 model.add_modules(
     STRF(shape=(25,18)),  # Full-rank STRF, 25 temporal x 18 spectral bins
     DoubleExponential()   # Double-exponential nonlinearity
@@ -79,10 +52,11 @@ model.add_modules(
 
 # Fit the model to the data. Any preprocessing should happen separately,
 # before this step. No inputs or outputs were specified for the Modules,
-# so `stimulus` will be the input to the first module, and the output
-# of the first module will be the input to the second module.
+# so `input` will be the input to the first module, and the output
+# of the first module will be the input to the second module. The fitter will
+# try to match the final output to `target`.
 # NOTE: this gets around the problem of hard-coded signal names (I think)
-model.fit(stimulus=stimulus, response=response, state=pupil_size,
+model.fit(input=stimulus, target=response, state=pupil_size,
           backend='scipy')
 
 # Predict the response to the stimulus.
@@ -100,7 +74,7 @@ prediction == same_prediction
 
 # I don't love having to specify backend=x everywhere, but we could always add
 # something like
-model.set_default_backend('tf')
+model.default_backend = 'tf'
 
 
 # Some models will need more data than just stimulus response (or x and y)
@@ -124,8 +98,20 @@ stimulus, response, pupil, state = my_complicated_data_loader('/path/data.csv')
 # For a model that uses multiple inputs, we need to package the data into a
 # Recording. Each data variable will be converted to RasterizedSignal by default
 # (a wrapper around a Numpy array with some utility methods).
+recording = Recording(
+    {'stimulus': stimulus, 'response': response, 'pupil': pupil, 'state': state}
+)
+# TODO: is it worth it to keep using recordings & signals, or should we just
+#       use a dict of numpy arrays? signals/recordings were nice for dealing
+#       with epochs & preprocessing, but depending on what makes it into the
+#       final version this may not be necessary. Means there will be a lot of
+#       functions where we have to check if an array was passed vs a signal,
+#       instead of just working with one data-type.
+#       (alternatively, always require that loaded data is packaged into a
+#        recording object, but I don't really like that option)
 
-# Now we build the ModelSpec as before, but we specify which Module receives
+
+# Now we build the Model as before, but we specify which Module receives
 # which input(s) during fitting. We'll also use a factorized, parameterized
 # STRF inplace of the full-rank version.
 # TODO: shorter keyword name for parameterization?
@@ -136,7 +122,7 @@ modules = [
     LinearWeighting(input=['LN_output', 'state', 'pupil'],
                     output='weighted_output')
 ]
-model = ModelSpec(modules=modules)
+model = Model(modules=modules)
 # Note that we passed a list of module instances to the constructor instead of
 # using the add_modules() method. These approaches are interchangeable.
 
@@ -144,7 +130,7 @@ model = ModelSpec(modules=modules)
 
 # We fit as before, but provide the recording in place of individual data
 # variables.
-model.fit(recording=recording, response_name='response', backend='scipy')
+model.fit(recording=recording, target_name='response', backend='scipy')
 
 # There's no need to separately generate a prediction since it will already be
 # represented as 'weighted_output' in the recording (unless we wanted to predict
@@ -164,6 +150,6 @@ model.fit(recording=recording, response_name='response', backend='scipy')
 # In this case we've also specified an output_name. Now the output of any
 # module that doesn't specify an output name will be called 'pred' instead
 # of 'output'.
-LN_STRF.fit(recording=recording, stimulus_name='stimulus',
-            response_name='response', output_name='pred')
+LN_STRF.fit(recording=recording, input_name='stimulus',
+            target_name='response', output_name='pred')
 prediction = recording['pred']

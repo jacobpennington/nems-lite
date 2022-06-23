@@ -7,5 +7,5 @@ Ex: `from nems import ModelSpec`
 
 '''
 
-from nems.modelspec import ModelSpec
+from nems.models.base import Model
 from nems.recording import Recording, load_recording
