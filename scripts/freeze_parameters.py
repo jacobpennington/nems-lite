@@ -7,7 +7,7 @@ NOTE: This script does not actually work yet!
 import numpy as np
 
 from nems import Model, load_recording
-from nems.modules import WeightChannels, FIR, LevelShift, DoubleExponential
+from nems.layers import WeightChannels, FIR, LevelShift, DoubleExponential
 
 
 # In the past, we've found that our models predict our data best if we split

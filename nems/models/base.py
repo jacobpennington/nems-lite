@@ -21,11 +21,11 @@ class Model:
     def evaluate(self, recording):
         # TODO: need to check for None input/output and specify 
         #       the default behavior in those cases.
-        # inputs = [Recording[name].values for name in Module.inputs]
-        # outputs = Module.evaluate(inputs)
+        # inputs = [Recording[name].values for name in Layer.inputs]
+        # outputs = Layer.evaluate(inputs)
         # Recording.update(
         #     {name: array_to_signal(array)
-        #      for name, array in zip(Module.output, outputs)}
+        #      for name, array in zip(Layer.output, outputs)}
         # )
         pass
 
@@ -41,12 +41,12 @@ class Model:
         pass
 
     def freeze_parameters(self, *module_keys):
-        """Invoke `Module.freeze_parameters` for each keyed module.
+        """Invoke `Layer.freeze_parameters` for each keyed module.
         
         See also
         --------
-        nems.modules.base.Module.freeze_parameters
-            The Module-level method 
+        nems.modules.base.Layer.freeze_parameters
+            (The layer-level method)
 
         """
         for key in module_keys:

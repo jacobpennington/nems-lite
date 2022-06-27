@@ -6,22 +6,18 @@ style guide / planning document, i.e. this is what NEMS *should* do. When this
 workflow is actually functional, it should be converted into a jupyter notebook
 that uses some sample data from our lab and demonstrates some plotting/analysis.
 
-NOTE: Things that are currently missing/undecided
-
-      3) d) Work on a copy but don't return it, i.e. require a separate
-            model.predict() call. I think this is more intuitive, but still
-            more memory similar to b.
-
 '''
 
 import numpy as np
 
 from nems import Model, Recording
-from nems.modules import STRF, WeightChannels, FIR, DoubleExponential
-from nems.modules.base import Module
+from nems.layers import STRF, WeightChannels, FIR, DoubleExponential
+from nems.layers.base import Module
 from nems.models import LN_STRF
 
-# Assume user is able to somehow load their data and format responses as
+# All data should be loaded as 2D numpy arrays. We leave this step up to
+# individual users, since data formats are so variable. Built-in model layers
+# (see `nems.layers`)
 # as a 2D numpy array, with dimensions T (time bins) x N (neurons). Other
 # data formatted as needed, but multi-dimensional data should place time
 # on the 0-axis (different order from old NEMS).
@@ -60,7 +56,7 @@ model.fit(input=stimulus, target=response, state=pupil_size,
           backend='scipy')
 
 # Predict the response to the stimulus.
-prediction = model.predict(stimulus, backend='tf')
+prediction = model.predict(stimulus, state=pupil_size, backend='tf')
 
 # NOTE: switched backends here to point out that a model should be able to
 # interchange backends. I.e. after the fit is finished, parameters are stored in

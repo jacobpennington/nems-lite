@@ -5,7 +5,7 @@ NOTE: This script does not actually work yet!
 """
 
 from nems import Model
-from nems.modules import STRF, WeightChannels, FIR, DoubleExponential
+from nems.layers import STRF, WeightChannels, FIR, DoubleExponential
 from nems.registry import keyword_lib
 
 # View all defined keywords

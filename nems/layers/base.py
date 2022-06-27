@@ -5,7 +5,7 @@ import numpy as np
 from nems.registry import module
 
 
-class Module:
+class Layer:
     """
     Encapsulates one data-transformation step of a NEMS ModelSpec.
 

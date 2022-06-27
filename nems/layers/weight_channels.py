@@ -2,14 +2,14 @@ import re
 
 import numpy as np
 
-from nems.modules.base import Module, Phi, Variable
+from nems.layers.base import Layer, Phi, Variable
 from nems.registry import module
 
 # TODO: double check all shape references after dealing w/ data order etc,
 #       make sure correct dims are lined up.
 
 
-class WeightChannels(Module):
+class WeightChannels(Layer):
     """TODO: docstring"""
 
     # TODO: would it make sense to subclass this for parameterization instead?
@@ -95,7 +95,7 @@ class WeightChannels(Module):
 
 # TODO: only keep one version, this is just for comparison when discussing
 #       with Stephen.
-class WeightChannelsV2(Module):
+class WeightChannelsV2(Layer):
     """TODO: docstring"""
 
     def __init__(self, shape, **kwargs):
@@ -121,14 +121,6 @@ class WeightChannelsV2(Module):
         self.shape = shape
         super.__init__(**kwargs)
 
-        # TODO: should these just go in the base Module class?
-        if self.parameters is None:
-            parameters = self.initial_parameters()
-        # TODO: should this be done automatically? maybe expose an option, like
-        #       `initialize_to_mean=True`?
-        if self.priors is not None:
-            parameters = self.mean_of_priors()
-        self.parameters = parameters
 
     # TODO: don't really *need* a separate method in this case since it's so
     #       simple, but idea is that other WeightChannels might have much more
@@ -179,7 +171,7 @@ class GaussianWeightChannelsV2(WeightChannelsV2):
 
 # TODO: only keep one version, this is just for comparison when discussing
 #       with Stephen.
-class WeightChannelsV3(Module):
+class WeightChannelsV3(Layer):
     # Same as V2, but uses the Phi & Variable classes
 
     def __init__(self, shape, **kwargs):
