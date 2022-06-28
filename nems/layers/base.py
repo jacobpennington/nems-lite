@@ -110,6 +110,17 @@ class Layer:
     def __repr__(self):
         return str(self.__class__)
 
+    def set_parameter_values(self, parameter_dict):
+        for k, v in parameter_dict.items():
+            self.parameters[k] = v
+
+    def get_parameter_values(self, *parameter_keys):
+        if len(parameter_keys) == 0:
+            values = self.parameters.get_values
+        else:
+            values = [self.parameters[k].values for k in parameter_keys]
+        return values
+
     # TODO: Alternatively, break old terminology a bit and use phi to refer to
     # the vectorized parameters only? Then this can look something like:
     #     ```
@@ -441,6 +452,9 @@ class Phi:
         else:
             val = default
         return val
+
+    def get_values(self, *keys):
+        return [self.get(k).values for k in keys]
 
     def update(self):
         # TODO

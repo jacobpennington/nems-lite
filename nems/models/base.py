@@ -29,41 +29,41 @@ class Model:
         # )
         pass
 
-    def add_modules(self, *modules):
-        """Invokes `self.add_module` for each module in arguments."""
-        for m in modules:
-            self.add_module(m)
+    def add_layers(self, *layers):
+        """Invokes `self.add_layer` for each layer in arguments."""
+        for m in layers:
+            self.add_layer(m)
 
-    def add_module(self):
-        # TODO: in addition to adding to a .modules list (or dict or whatever),
-        #       set `module.model = self` so that each module has a pointer
+    def add_layer(self):
+        # TODO: in addition to adding to a .layers list (or dict or whatever),
+        #       set `layer.model = self` so that each layer has a pointer
         #       to its parent Modelspec.
         pass
 
-    def freeze_parameters(self, *module_keys):
-        """Invoke `Layer.freeze_parameters` for each keyed module.
+    def freeze_parameters(self, *layer_keys):
+        """Invoke `Layer.freeze_parameters` for each keyed layer.
         
         See also
         --------
-        nems.modules.base.Layer.freeze_parameters
+        nems.layers.base.Layer.freeze_parameters
             (The layer-level method)
 
         """
-        for key in module_keys:
-            self.modules[key].freeze_parameters()
+        for key in layer_keys:
+            self.layers[key].freeze_parameters()
 
     def to_json(self):
         # TODO
-        # iterate module.to_json + add metadata 
+        # iterate layer.to_json + add metadata 
         pass
 
     def from_json(json):
         # TODO
-        # store metadata, iterate module.from_json and invoke add_modules
+        # store metadata, iterate layer.from_json and invoke add_layers
         pass
 
     # TODO: not real names, just to remind me what I mean. Added methods
-    # for phi->vector->phi and bounds->vector conversion to modules. So need
+    # for phi->vector->phi and bounds->vector conversion to layers. So need
     # to add a model-level version that just collects all the pieces for fit.
     #
     # Considering keeping this functionality separate from these classes, adds
