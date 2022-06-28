@@ -10,21 +10,11 @@ that uses some sample data from our lab and demonstrates some plotting/analysis.
 
 import numpy as np
 
-from nems import Model, Recording
+from nems import Model
 from nems.layers import STRF, WeightChannels, FIR, DoubleExponential, StateGain
 from nems.layers.base import Layer
 from nems.models import LN_STRF
 
-# TODO: 2D covers most cases, but we should support higher-dimensional data.
-#       I.e. built-in layers wouldn't change, but the Signal class and related
-#       should be more general. Update script documentation after investigating
-#       support for this.
-
-# TODO: I still don't love the idea of hard-coding the dimension order, but
-#       I don't see a good way around it without switching to xarrays. But that
-#       would have its own issues, because then we have to hard-code a dimension
-#       name (at least for the built-in modules). Probably best to just stick
-#       with ndarray for simplicity and enforce the ordering for built-ins.
 
 # All data should be loaded as 2D numpy arrays. We leave this step up to
 # individual users, since data formats are so variable. Built-in model layers
@@ -36,12 +26,13 @@ from nems.models import LN_STRF
 # M is the number of state variables.
 def my_data_loader(file_path):
     # Dummy function to demonstrate the data format. This resembles LBHB data,
-    # which includes a sound stimulus (assumed to be pre-converted to a
-    # spectrogram here), spiking responses recorded with implanted electrodes,
-    # and pupil size as a measure of arousal.
+    # which includes a sound stimulus (assumed here to be pre-converted to a
+    # spectrogram), spiking responses recorded with implanted electrodes
+    # (assumed here to be pre-converted to firing rate / PSTH), and pupil size
+    # as a measure of arousal.
     print(f'Loading data from {file_path}, but not really...')
     spectrogram = np.random.random(size=(10000, 18))
-    response = np.random.choice([0,1], size=(10000, 100), p=[0.99, 0.01])
+    response = np.random.random(size=(10000, 100))
     pupil_size = np.random.random(size=(10000, 1))
 
     return spectrogram, response, state
@@ -57,7 +48,8 @@ model.add_layers(
     DoubleExponential(),  # Double-exponential nonlinearity
     StateGain()
 )
-# TODO: Not actually sure where the StateGain layer should go, ask Stephen
+# TODO: Not actually sure where the StateGain layer should go, but I think this
+#       is appropriate? Ask Stephen to be sure.
 
 
 # Fit the model to the data. Any data preprocessing should happen separately,
@@ -85,12 +77,33 @@ prediction = model.predict(spectrogram, state=pupil_size, backend='scipy')
 model.default_backend = 'scipy'
 
 
-# Some models will need more data than input, output, and state.
+# Some models will need more data than input, output, and state. In that case,
+# the fit process requires a couple of extra steps. First, we'll define some
+# simple example Layers that require additional inputs and then load data again.
+
+# Dummy layer that can make use of an arbitrary number of inputs.
+class Sum(Layer):
+    def evaluate(self, *inputs):
+        # All inputs are treated the same
+        return np.sum(inputs)
+
+# Dummy layer that makes use of its inputs in different ways.
+# NOTE: Some implementation details are hidden for simplicity.
+class LinearWeighting(Layer):
+    def evaluate(self, prediction, pupil, *other_states):
+        # `prediction` and `pupil` are treated one way, whereas all non-pupil
+        # state variables (`other_state`) are treated the same.
+        #
+        # Assume fittable parameters 'a' and 'b' have been initialized.
+        a, b = self.get_parameter_values('a', 'b')
+        return a*prediction + b*pupil + np.sum(other_states)
+
+
 def my_complicated_data_loader(file_path):
     # Dummy function to demonstrate the data format.
     print(f'Loading data from {file_path}, but not really...')
     spectrogram = np.random.random(size=(10000, 18))
-    response = np.random.choice([0,1], size=(10000, 100), p=[0.99, 0.01])
+    response = np.random.random(size=(10000, 100))
     pupil = np.random.random(size=(10000, 1))
     other_state = np.random.choice(['on', 'off'], size=(10000, 1))
 
@@ -99,88 +112,60 @@ def my_complicated_data_loader(file_path):
 stim, resp, pupil, state = my_complicated_data_loader('/path/data.csv')
 
 
-# For a model that uses multiple inputs, we need to package the data into a
-# Recording. Each data variable will be converted to RasterizedSignal by default
-# (a wrapper around a Numpy array with some utility methods).
-recording = Recording({
-    'stimulus': stim, 'response': resp, 'pupil': pupil, 'state': state
-    })
-# TODO: is it worth it to keep using recordings & signals, or should we just
-#       use a dict of numpy arrays? signals/recordings were nice for dealing
-#       with epochs & preprocessing, but depending on what makes it into the
-#       final version this may not be necessary. Means there will be a lot of
-#       functions where we have to check if an array was passed vs a signal,
-#       instead of just working with one data-type.
-#       (alternatively, always require that loaded data is packaged into a
-#        recording object, but I don't really like that option)
-
-# Dummy layer that can make use of an arbitrary number of state variables.
-class Sum(Layer):
-    def evaluate(self, *inputs):
-        # All inputs are treated the same
-        return np.sum(inputs)
-
-# Dummy layer that makes use of its inputs in different ways.
-class LinearWeighting(Layer):
-
-    def __init__(self, **kwargs):
-        super.__init__(**kwargs)
-        self.set_parameter_values({'a': 0.2, 'b': 0.5})
-
-    def evaluate(self, prediction, pupil, *other_states):
-        # prediction and pupil are treated one way, whereas all non-pupil state
-        # variables are treated the same.
-        a, b = self.get_parameter_values('a', 'b')
-        return a*prediction + b*pupil + np.sum(other_states)
+# For a model that uses multiple inputs, we need to package the input data into
+# a dictionary. This way, modules can specify which inputs they need using the
+# assigned keys.
+data = {'stimulus': stim, 'pupil': pupil, 'state': state}
 
 
 # Now we build the Model as before, but we can specify which Layer receives
-# which input(s) during fitting. For layers that only need a single input, we
-# provide a string referencing the name of signal in the recording. In this case,
+# which input(s) during fitting. We'll also use a factorized, parameterized STRF
+# in place of the full-rank version to demonstrate usage. For layers that only
+# need a single input, we provide the approprtiate dictionary key. In this case,
 # we named the spectrogram data 'stimulus' so that will be the input to
 # `WeightChannels`. The inputs for `FIR` and `DoubleExponential` should be the
 # outputs of their preceding layers, so we don't need to specify an input.
-# However, we want to track the output of the LN portion of the model separately
-# from the rest, so we specify `output='LN_output'`.
+# However, we want to track the output of the LN portion of the model
+# (WeightChannels, FIR, and DoubleExponential) separately from the rest, so we
+# specify `output='LN_output'`.
 
-# We want to apply the `Sum` module both to the output of the LN portion of the
+# We want to apply the `Sum` module to the output of the LN portion of the
 # model and to both of our state variables. The ordering of the data variables
-# doesn't matter in this case, so we provide a list with the name of each signal.
+# doesn't matter for this layer, so we provide a list of the dictionary keys.
 # However, the ordering does matter for the `LinearWeighting` layer, so we
-# provide a dictionary instead to ensure the correct signals are mapped to each
-# parameter for `LinearWeighting.evaluate`. Note that we could also still use a
-# list as long as the names are specified in the correct order.
-# 
-# We'll also use a factorized, parameterized STRF in place of the full-rank
-# version to demonstrate usage.
-# TODO: shorter keyword name for parameterization?
+# provide a dictionary instead to ensure the correct data is mapped to each
+# parameter for `LinearWeighting.evaluate`.
+# NOTE: We could also have used a list as long as the keys were specified in
+#       the same order as in the method definition. However, using a dictionary
+#       makes it clear what the data is mapped to without needing to refer back
+#       to the Layer implementation.
 layers = [
     WeightChannels(shape=(18,4), parameterization='gaussian', input='stimulus'),
     FIR(shape=(4, 25), parameterization='P3Z1'),
     DoubleExponential(output='LN_output'),
     Sum(input=['LN_output', 'state', 'pupil'],
-                    output='weighted_output'),
-    LinearWeighting(input={'pred': 'weighted_output', 'pupil': 'pupil',
+                    output='summed_output'),
+    LinearWeighting(input={'pred': 'summed_output', 'pupil': 'pupil',
                            'other_states': 'state'})
 ]
 model = Model(layers=layers)
-# Note that we also passed a list of layer instances to the constructor instead
-# of using the `add_layers()` method. These approaches are interchangeable.
+# Note that we also passed a list of `Layer` instances to the `Model` constructor
+# instead of using the `add_layers()` method. These approaches are
+# interchangeable.
 
 
-# We fit as before, but provide the recording in place of individual data
-# variables. The input to the first layer is already specified in the layer
-# itself, so we only need to tell the model what data to match its output to
-# (the 'response' Signal in this case).
-model.fit(input=recording, target='response')
-prediction = model.predict(recording)
+# We fit as before, but provide the `data` dictionary in place of individual
+# variables. The necessary inputs are already specified in the layers, so we
+# only need to tell the model what data to match its output to
+# (`resp`) in this case.
+model.fit(input=data, target=resp)
+prediction = model.predict(data)
 
 
-# Instead of specifying a custom model, we can also use a pre-built model
-# (scipy is the default backend, so we don't actually need to specify it).
-# In this case we've also specified an output_name. Now the output of any
+# Instead of specifying a custom model, we can also use a pre-built model.
+# In this case we've also specified `output_name`. Now the output of any
 # layer that doesn't specify an output name will be called 'pred' instead
-# of 'output'.
-LN_STRF.fit(recording=recording, input_name='stimulus',
-            target_name='response', output_name='pred')
-prediction = LN_STRF.predict(recording)
+# of the default, 'output'. Our standard LN_STRF model only needs the stimulus
+# spectrogram as input and neural response (as firing rates / PSTH) as a target.
+LN_STRF.fit(input=stim, target=resp, output_name='pred')
+prediction = LN_STRF.predict(stim)
