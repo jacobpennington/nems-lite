@@ -415,6 +415,12 @@ class Phi:
     #       ```
     #       In other words, anyone can immediately see what format is expected
     #       and we can put a little effort into a pretty-print __repr__ method.
+
+
+    # TODO: implement multiple _vector (for jacknifing etc)
+    #       idea: separate _array & track index to current vector.
+    #       some way to make this arbitrary-d?
+    #       Try looking at jackknife-like code for scikit learn etc
     
     def __init__(self, *variables):
         self._vector = []
@@ -480,10 +486,11 @@ class Phi:
 
 
 class Variable:
-    # TODO: should bounds and priors go here too (with relevant methods still
-    #       exposed at the module level).
+    # TODO: rename to Parameter and refactor rest of code
 
-    # TODO: is there a straightforward way to mimic a numpy array?
+    # TODO: incorporate bounds and priors here
+
+    # TODO: is there a straightforward way to mimic a numpy array here?
     #       ex: would be nice to be able to use @ operator directly on a
     #       coefficients variable instead of variable.values.
 

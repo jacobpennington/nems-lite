@@ -18,7 +18,7 @@ class Model:
         #       (see `scripts/freeze_parameters.py`)
         pass
 
-    def evaluate(self, recording):
+    def evaluate(self, input):
         # TODO: need to check for None input/output and specify 
         #       the default behavior in those cases.
         # inputs = [Recording[name].values for name in Layer.inputs]
@@ -27,6 +27,15 @@ class Model:
         #     {name: array_to_signal(array)
         #      for name, array in zip(Layer.output, outputs)}
         # )
+        pass
+
+    def predict(self, input):
+        # TODO: I guess this would really just be a wrapper for evaluate?
+        pass
+
+    def score(self, prediction, target):
+        # TODO: this should point to an independent utility function, but
+        #       placed here for convenience (and also to provide model defaults).
         pass
 
     def add_layers(self, *layers):
