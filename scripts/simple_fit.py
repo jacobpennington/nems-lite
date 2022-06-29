@@ -1,12 +1,11 @@
-'''
-Demonstrates how to fit a basic LN-STRF model using NEMS.
+"""Demonstrates how to fit a basic LN-STRF model using NEMS.
 
 NOTE: This script does not actually work yet! This is currently intended as a
 style guide / planning document, i.e. this is what NEMS *should* do. When this
 workflow is actually functional, it should be converted into a jupyter notebook
 that uses some sample data from our lab and demonstrates some plotting/analysis.
 
-'''
+"""
 
 import numpy as np
 
@@ -20,10 +19,13 @@ from nems.models import LN_STRF
 # individual users, since data formats are so variable. Built-in model layers
 # (see `nems.layers`) expect time to be represented on the first axis, and
 # other data dimensions (neurons, spectral channels, etc.) to be represented on
-# the second axis. For example, spiking responses from a population of neurons
+# subsequent axes. For example, spiking responses from a population of neurons
 # should have shape (T, N) where T is the number of time bins and N is the
 # number of neurons. State data (like pupil size) should have shape (T, M) where
 # M is the number of state variables.
+# TODO: after implementing more of the core functions, come back to this. Going
+#       to try to make this not be a hard constraint (i.e. using the defaults
+#       will be easier if you follow the format, but you can choose not to).
 def my_data_loader(file_path):
     # Dummy function to demonstrate the data format. This resembles LBHB data,
     # which includes a sound stimulus (assumed here to be pre-converted to a

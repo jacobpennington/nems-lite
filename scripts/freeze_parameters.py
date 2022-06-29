@@ -1,8 +1,7 @@
-'''
-Show how to freeze module parameters in a multi-step fitting process.
+"""Shows how to freeze module parameters in a multi-step fitting process.
 NOTE: This script does not actually work yet!
 
-'''
+"""
 
 import numpy as np
 
