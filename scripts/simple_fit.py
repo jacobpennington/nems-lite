@@ -127,20 +127,22 @@ data = {'stimulus': stim, 'pupil': pupil, 'state': state}
 # we named the spectrogram data 'stimulus' so that will be the input to
 # `WeightChannels`. The inputs for `FIR` and `DoubleExponential` should be the
 # outputs of their preceding layers, so we don't need to specify an input.
-# However, we want to track the output of the LN portion of the model
-# (WeightChannels, FIR, and DoubleExponential) separately from the rest, so we
-# specify `output='LN_output'`.
-
+#
+# We do want to track the output of the LN portion of the model
+# (`WeightChannels`, `FIR`, and `DoubleExponential`) separately from the rest,
+# so we specify `output='LN_output'` for `DoubleExponential`.
+#
 # We want to apply the `Sum` module to the output of the LN portion of the
-# model and to both of our state variables. The ordering of the data variables
+# model and to both of our state variables. The order of the data variables
 # doesn't matter for this layer, so we provide a list of the dictionary keys.
-# However, the ordering does matter for the `LinearWeighting` layer, so we
-# provide a dictionary instead to ensure the correct data is mapped to each
-# parameter for `LinearWeighting.evaluate`.
+#
+# Order does matter for the `LinearWeighting` layer, so we provide a dictionary
+# instead to ensure the correct data is mapped to each parameter
+# for `LinearWeighting.evaluate`.
 # NOTE: We could also have used a list as long as the keys were specified in
 #       the same order as in the method definition. However, using a dictionary
-#       makes it clear what the data is mapped to without needing to refer back
-#       to the Layer implementation.
+#       clarifies what the data is mapped to without needing to refer back to
+#       the Layer implementation.
 layers = [
     WeightChannels(shape=(18,4), parameterization='gaussian', input='stimulus'),
     FIR(shape=(4, 25), parameterization='P3Z1'),
@@ -151,7 +153,7 @@ layers = [
                            'other_states': 'state'})
 ]
 model = Model(layers=layers)
-# Note that we also passed a list of `Layer` instances to the `Model` constructor
+# Note that we also passed a list of `Layer` instances to `Model.__init__`
 # instead of using the `add_layers()` method. These approaches are
 # interchangeable.
 
