@@ -1,4 +1,4 @@
-from nems.models.base import Model
+from .base import Model
 
 class LN_STRF(Model):
     '''

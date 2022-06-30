@@ -5,9 +5,9 @@ Modified from code by Dr. Brad Buran (github: bburan).
 
 """
 
-from nems.distributions.normal import Normal
-from nems.distributions.half_normal import HalfNormal
-from nems.distributions.uniform import Uniform
-from nems.distributions.beta import Beta
-from nems.distributions.gamma import Gamma
-from nems.distributions.exponential import Exponential
+from .normal import Normal
+from .half_normal import HalfNormal
+from .uniform import Uniform
+from .beta import Beta
+from .gamma import Gamma
+from .exponential import Exponential

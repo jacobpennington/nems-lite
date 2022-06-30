@@ -2,4 +2,4 @@
 Collection of pre-built models.
 '''
 
-from LN import LN_STRF
+from .LN import LN_STRF

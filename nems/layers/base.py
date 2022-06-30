@@ -3,6 +3,7 @@ import json
 import numpy as np
 
 from nems.registry import module
+from nems.distributions import Normal
 
 
 class Layer:
@@ -416,18 +417,17 @@ class Phi:
     #       In other words, anyone can immediately see what format is expected
     #       and we can put a little effort into a pretty-print __repr__ method.
 
-
-    # TODO: implement multiple _vector (for jacknifing etc)
-    #       idea: separate _array & track index to current vector.
-    #       some way to make this arbitrary-d?
-    #       Try looking at jackknife-like code for scikit learn etc
-    
     def __init__(self, *variables):
-        self._vector = []
+        self._array = [[]]
+        self.index = 0
         self._dict = {}
         self.size = 0
         for v in variables:
             self.add_variable(v)
+
+    @property
+    def _vector(self):
+        return self._array[self.index]
 
     def add_variable(self, variable):
         variable.first_index = self.size
@@ -485,7 +485,7 @@ class Phi:
         return str(self._dict)
 
 
-class Variable:
+class Parameter:
     # TODO: rename to Parameter and refactor rest of code
 
     # TODO: incorporate bounds and priors here
@@ -494,7 +494,7 @@ class Variable:
     #       ex: would be nice to be able to use @ operator directly on a
     #       coefficients variable instead of variable.values.
 
-    def __init__(self, name, shape=(1,), dtype=np.float64, initial_value=0,
+    def __init__(self, name, shape=(1,), dtype=np.float64, 
                  bounds=None, prior=None):
         self.name = name
         self.shape = shape
@@ -502,7 +502,13 @@ class Variable:
         for axis in shape:
             self.size *= axis
         self.dtype = dtype
-        self.initial_value = initial_value
+
+        if prior is None:
+            self.prior = Normal(mean=0, std=1)  # default to standard normal
+        if bounds is None:
+            self.bounds = (self.prior.ppf(0.0001), self.prior.ppf(0.9999))
+        self.initial_value = self.initialize()
+
         # Must be set by Phi for .values to work.
         self.phi = None  # Pointer to parent Phi instance.
         self.first_index = None  # Location of data within Phi._vector
@@ -512,6 +518,11 @@ class Variable:
     def values(self):
         values = self.phi._vector[self.first_index:self.last_index+1]
         return np.reshape(values, self.shape)
+
+    def initialize(self):
+
+
+        return value
 
     def update(self, value):
         if self.shape == (1,) and np.isscalar(value):

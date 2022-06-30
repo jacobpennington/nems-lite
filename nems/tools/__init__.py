@@ -18,4 +18,4 @@ Contents
 
 """
 
-from nems.tools.json import NumpyEncoder, json_numpy_obj_hook
+from .json import NEMSEncoder, NEMSDecoder

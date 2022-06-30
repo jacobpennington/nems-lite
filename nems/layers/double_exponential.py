@@ -1,4 +1,4 @@
-from nems.layers.base import Layer
+from .base import Layer
 
 class DoubleExponential(Layer):
     pass

@@ -2,7 +2,7 @@ import re
 
 import numpy as np
 
-from nems.layers.base import Layer, Phi, Variable
+from .base import Layer, Phi, Variable
 from nems.registry import module
 
 # TODO: double check all shape references after dealing w/ data order etc,
