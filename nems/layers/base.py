@@ -382,8 +382,8 @@ class Layer:
 
 
 class Phi:
-    # TODO: Sketch of possible Phi and Variable classes. General idea:
-    #       Variables make the structure of the Phi dictionary explicit and easy
+    # TODO: Sketch of possible Phi and Parameter classes. General idea:
+    #       Parameters make the structure of the Phi dictionary explicit and easy
     #       to document, Phi provides a dict-like interface for users but keeps
     #       a persistent vector (list) representation under the hood.
     #
@@ -391,13 +391,13 @@ class Phi:
     #       somewhere similar, along the lines of:
     #       ```
     #       self.parameters = Phi(
-    #           Variable(name='alpha'),
-    #           Variable(name='beta', shape=(3,2)),
-    #           Variable(name='gamma', dtype=np.float16),
+    #           Parameter(name='alpha'),
+    #           Parameter(name='beta', shape=(3,2)),
+    #           Parameter(name='gamma', dtype=np.float16),
     #       )
     #       ```
     #       Would also make sense to include bounds here, probably as a property
-    #       of the Variables (and then the Phi class can easily collect them as
+    #       of the Parameters (and then the Phi class can easily collect them as
     #       a bounds array for the start of optimization).
     #
     #       Another nice result of this (in my opinion) is that the string rep.
@@ -405,9 +405,9 @@ class Phi:
     #       ```
     #       print(self.parameters)
     #       >>> {
-    #           'alpha': Variable(shape=(1,), dtype=float64)
+    #           'alpha': Parameter(shape=(1,), dtype=float64)
     #                    .values = 4.9029380298
-    #           'beta':  Variable(shape=(3,2), dtype=float64)
+    #           'beta':  Parameter(shape=(3,2), dtype=float64)
     #                    .values = [[3.4445, 7.001],
     #                               [0.44,   133.0],
     #                               [0.858,  11.11]]
@@ -417,31 +417,31 @@ class Phi:
     #       In other words, anyone can immediately see what format is expected
     #       and we can put a little effort into a pretty-print __repr__ method.
 
-    def __init__(self, *variables):
+    def __init__(self, *parameters):
         self._array = [[]]
         self.index = 0
         self._dict = {}
         self.size = 0
-        for v in variables:
-            self.add_variable(v)
+        for v in parameters:
+            self.add_parameter(v)
 
     @property
     def _vector(self):
         return self._array[self.index]
 
-    def add_variable(self, variable):
-        variable.first_index = self.size
-        self.size += variable.size
-        variable.last_index = self.size-1
-        self._vector.extend([variable.initial_value]*variable.size)
-        self._dict[variable.name] = variable
-        variable.phi = self
+    def add_parameter(self, parameter):
+        parameter.first_index = self.size
+        self.size += parameter.size
+        parameter.last_index = self.size-1
+        self._vector.extend([parameter.initial_value]*parameter.size)
+        self._dict[parameter.name] = parameter
+        parameter.phi = self
 
     def __str__(self):
         return str(self._dict)
 
     # TODO: would need to propagate to/from_json calls from Module, and collect
-    #       json representations from Variables, and store _vector.
+    #       json representations from Parameters, and store _vector.
     def to_json(self):
         pass
 
@@ -492,7 +492,7 @@ class Parameter:
 
     # TODO: is there a straightforward way to mimic a numpy array here?
     #       ex: would be nice to be able to use @ operator directly on a
-    #       coefficients variable instead of variable.values.
+    #       coefficients parameter instead of parameter.values.
 
     def __init__(self, name, shape=(1,), dtype=np.float64, 
                  bounds=None, prior=None):
@@ -520,8 +520,7 @@ class Parameter:
         return np.reshape(values, self.shape)
 
     def initialize(self):
-
-
+        value = None  # TODO: need to finish testing distribution sample method
         return value
 
     def update(self, value):
@@ -529,7 +528,7 @@ class Parameter:
             self.phi._vector[self.first_index] = value
         elif np.shape(value) != self.shape:
             raise ValueError(
-                f"Variable {self.name} requires shape {self.shape}, but"
+                f"Parameter {self.name} requires shape {self.shape}, but"
                 f"{value} has shape {np.shape(value)}"
             )
         else:
@@ -543,16 +542,16 @@ class Parameter:
 
     def from_json(json):
         data = json.loads(json)
-        return Variable(**data)
+        return Parameter(**data)
 
     def __repr__(self):
         # TODO: how to fix format for printing? Apparently __repr__ always
         #       ignores linebreak characters.
-        string = (f"Variable(shape={self.shape}, dtype={self.dtype})"
+        string = (f"Parameter(shape={self.shape}, dtype={self.dtype})"
                   f".values = {self.values}")
         return string
 
     def __str__(self):
-        string = (f"Variable(shape={self.shape}, dtype={self.dtype})"
+        string = (f"Parameter(shape={self.shape}, dtype={self.dtype})"
                   f".values = {self.values}")
         return string
