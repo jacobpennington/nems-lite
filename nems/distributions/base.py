@@ -48,11 +48,26 @@ class Distribution:
     def shape(self):
         return self.mean().shape
 
-    def sample(self, n=None):
+    def sample(self, n=None, bounds=None):
         if n is None:
-            return self.distribution.rvs().reshape(self.shape)
+            n = 1
         size = [n] + list(self.shape)
-        return self.distribution.rvs(size=size)
+        good_sample = np.full(shape=size, fill_value=np.nan)
+
+        while np.sum(np.isnan(good_sample)) > 0:
+            sample = self.distribution.rvs(size=size)
+            if bounds is not None:
+                lower, upper = bounds
+                keep = (sample >= lower) | (sample <= upper)
+                good_sample[keep] = sample[keep]
+            else:
+                good_sample = sample
+                break
+
+        # Drop first dimension if n = 1
+        final_sample = np.squeeze(good_sample, axis=0)
+
+        return final_sample
 
     def tolist(self):
         d = self.__dict__

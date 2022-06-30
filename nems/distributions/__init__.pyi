@@ -1,7 +1,7 @@
 """Collection of sampling Distributions.
 
 Intended to serve as priors for  `nems.layers.base.Parameter`.
-Code provided by Dr. Brad Buran (github: bburan).
+Modified from code by Dr. Brad Buran (github: bburan).
 
 """
 

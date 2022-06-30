@@ -1,7 +1,7 @@
 from scipy import stats
 import numpy as np
 
-from nems.distributions.distribution import Distribution
+from nems.distributions.base import Distribution
 
 
 class HalfNormal(Distribution):
