@@ -13,3 +13,5 @@ from .fir_filter import FIR
 from .strf import STRF
 from .weight_channels import WeightChannels
 from .level_shift import LevelShift
+
+from .base import Layer, Phi, Parameter  # Keep these imports last

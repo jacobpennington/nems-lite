@@ -14,7 +14,7 @@ class HalfNormal(Distribution):
     
     """
 
-    def __init__(self, sd, shape=None):
+    def __init__(self, sd):
         self._sd = np.asarray(sd)
         self.distribution = stats.halfnorm(scale=self._sd)
 

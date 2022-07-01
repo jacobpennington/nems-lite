@@ -10,12 +10,12 @@ class Exponential(Distribution):
     Parameters
     ----------
     beta : scalar or ndarray
-        Scale of distribution. Also determines `mean=beta` and `std=beta`.
+        Scale of distribution.
 
     """
 
     def __init__(self, beta):
-        self._beta = self._mean = self._sd = np.asarray(beta)
+        self._beta = np.asarray(beta)
         self.distribution = stats.expon(scale=beta)
 
     def __repr__(self):

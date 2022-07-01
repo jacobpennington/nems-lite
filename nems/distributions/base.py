@@ -3,7 +3,15 @@ import numpy as np
 
 class Distribution:
     """Base class for a Distribution."""
-    
+
+    # Any subclass of Distribution will be registered here, for use by
+    # `Distribution.from_json`
+    subclasses = {}
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        cls.subclasses[cls.__name__] = cls
+
     @classmethod
     def value_to_string(cls, value):
         if value.ndim == 0:
@@ -70,9 +78,54 @@ class Distribution:
         return final_sample
 
     def tolist(self):
-        d = self.__dict__
-        if 'distribution' in d:
-            del d['distribution']
+        """Represent distribution as a list.
+        
+        See also
+        --------
+        Distribution.to_json
+        Distribution.from_json
+
+        """
         name = type(self).__name__
+        d = self.__dict__
+        for k in list(d.keys()):
+            # Remove `self.distribution`
+            # and any attributes with two leading underscores
+            if (k == 'distribution') or (k.startswith(f'_{name}__')):
+                del d[k]
+
         l = [name, d]
         return l
+
+    def to_json(self):
+        """Encode a distribution instance as a dictionary.
+
+        See also
+        --------
+        `nems.tools.json`.
+        
+        """
+        return {'data': self.tolist()}
+
+    @classmethod
+    def from_json(cls, json):
+        """Decode a distribution from a dictionary.
+        
+        Warnings
+        --------
+        Distribution subclasses should avoid assigning instance attributes that
+        are not used in `__init__`, as this will break compatibility with
+        `from_json`. If such attributes are absolutely needed, use two leading
+        underscores (i.e. `self.__my_attr = attr`), as those will not be encoded
+        by `to_json`.
+
+        See also
+        --------
+        `nems.tools.json`.
+
+        """
+        class_name, kwargs = json['data']
+        # remove first leading underscore kwargs keys, if any
+        kwargs = {'_'.join(k.split('_')[1:]): v for k, v in kwargs.items()}
+        class_obj = cls.subclasses[class_name]
+        return class_obj(**kwargs)

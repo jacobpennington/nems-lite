@@ -11,3 +11,5 @@ from .uniform import Uniform
 from .beta import Beta
 from .gamma import Gamma
 from .exponential import Exponential
+
+from .base import Distribution  # Keep this import last
