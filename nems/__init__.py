@@ -1,6 +1,6 @@
-"""Collects commonly-used Modules for easier import.
+"""Collects commonly-used core classes & functions for easier import.
 
-Ex: `from nems import ModelSpec`
+Ex: `from nems import Model`
 
 """
 

@@ -57,9 +57,9 @@ from functools import partialmethod
 
 import numpy as np
 
-from nems.distributions import Distribution
-from nems.layers import Layer, Phi, Parameter
-from nems.models import Model
+from nems.distributions.base import Distribution
+from nems.layers.base import Layer, Phi, Parameter
+from nems.models.base import Model
 
 
 _NEMS_classes_to_encode = [
