@@ -437,10 +437,10 @@ class Phi:
         self._dict[parameter.name] = parameter
         parameter.phi = self
 
-    def resample(self, inplace=False):
+    def sample(self, inplace=False):
         samples = []
         for p in self._dict.values():
-            samples.append(p.resample(inplace=inplace))
+            samples.append(p.sample(inplace=inplace))
         if not inplace:
             vector = []
             for s in samples:
@@ -454,7 +454,7 @@ class Phi:
             new_indices = range(array_length, i+1)
             match new_vector:
                 case 'resample':
-                    new_vectors = [self.resample() for j in new_indices]
+                    new_vectors = [self.sample() for j in new_indices]
                 case 'copy':
                     new_vectors = [self._vector.copy() for j in new_indices]
 
@@ -508,10 +508,7 @@ class Phi:
         return self._dict.values()
 
     def __repr__(self):
-        return str(self._dict)
-
-    def __str__(self):
-        return str(self._dict)
+        return str(list(self._dict.values()))
 
 
 class Parameter:
@@ -529,12 +526,14 @@ class Parameter:
         self.dtype = dtype
 
         if prior is None:
-            self.prior = Normal(mean=0, sd=1)  # default to standard normal
+            prior = Normal(mean=0, sd=1)  # default to standard normal
+        self.prior = prior
         if bounds is None:
-            self.bounds = (self.prior.percentile(0.0001),
-                           self.prior.percentile(0.9999))
-        sample = self.prior.sample(bounds=self.bounds)
-        self.initial_value = np.ravel(sample).tolist()
+            bounds = (prior.percentile(0.0001), prior.percentile(0.9999))
+        self.bounds = bounds
+
+        sample = prior.sample(bounds=bounds)
+        self.initial_value = np.ravel(self.sample()).tolist()
 
         # Must be set by Phi for .values to work.
         self.phi = None  # Pointer to parent Phi instance.
@@ -546,7 +545,7 @@ class Parameter:
         values = self.phi._vector[self.first_index:self.last_index+1]
         return np.reshape(values, self.shape)
 
-    def resample(self, inplace=False):
+    def sample(self, inplace=False):
         sample = self.prior.sample(bounds=self.bounds)
         if inplace:
             self.update(sample)
@@ -567,9 +566,13 @@ class Parameter:
 
     def to_json(self):
         """Encode Parameter object as json. See `nems.tools.json`."""
-        # TODO: something in here is breaking serialization.
-        data = {'name': self.name, 'shape': self.shape, 'dtype': self.dtype,
-                'prior': self.prior, 'bounds': self.bounds}
+        data = {
+            'name': self.name,
+            'shape': self.shape, 
+            'dtype': str(self.dtype),
+            'prior': self.prior,
+            'bounds': self.bounds
+            }
         # Encoder adds an extra key, so nest the dict to keep kwargs separate.
         return {'data': data}
 
@@ -578,20 +581,28 @@ class Parameter:
         return Parameter(**json['data'])
 
     def __repr__(self):
-        # TODO: how to fix format for printing? Apparently __repr__ always
-        #       ignores linebreak characters.
-        string = (f"Parameter(shape={self.shape}, dtype={self.dtype})"
-                  f".values = {self.values}")
-        return string
+        data = [
+            f'Parameter(name={self.name}, shape={self.shape}, dtype={self.dtype})',
+            self.values.__repr__()
+            ]
+        return json.dumps(data, indent=2)
 
-    def __str__(self):
-        string = (f"Parameter(shape={self.shape}, dtype={self.dtype})"
-                  f".values = {self.values}")
-        return string
-
-    # TODO: untested, but I'm hoping it might be this simple...
-    #       (should pass all numpy ufuncs to self.values)
     def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
-        array = self.values
-        new_array = array.__array_ufunc__(ufunc, method, *inputs, **kwargs)
-        self.update(new_array)
+        """Propagate numpy ufunc operations to `Parameter.values` (WIP)."""
+        raise NotImplementedError("Parameter.__array_ufunc__ doesn't work yet.")
+        f = getattr(ufunc, method)
+        subbed_inputs = [
+            x.values if isinstance(x, Parameter) else x
+            for x in inputs
+            ]
+        output = f(*subbed_inputs, **kwargs)
+
+        if output is None:
+            raise NotImplementedError("ufunc cannot modify Parameter in-place.")
+        else:
+            if not isinstance(output, np.ndarray):
+                try:
+                    output = np.asarray(output)
+                    self.update(output)
+                except Exception as e:
+                    raise e("Something went wrong in Parameter.__array_ufunc__")

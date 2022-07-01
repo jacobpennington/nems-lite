@@ -3,7 +3,7 @@ import re
 import numpy as np
 
 from .base import Layer, Phi, Parameter
-from nems.registry import module
+from nems.registry import layer
 
 
 # TODO: double check all shape references after dealing w/ data order etc,
@@ -46,7 +46,7 @@ class WeightChannels(Layer):
         y = [self.coefficients @ x for x in inputs]
         return y
 
-    @module('wc')
+    @layer('wc')
     def from_keyword(keyword):
         wc_class = WeightChannels
         kwargs = {}
