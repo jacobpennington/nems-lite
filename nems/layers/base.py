@@ -419,34 +419,60 @@ class Phi:
 
     def __init__(self, *parameters):
         self._array = [[]]
-        self.index = 0
+        self._index = 0
         self._dict = {}
         self.size = 0
-        for v in parameters:
-            self.add_parameter(v)
+        for p in parameters:
+            self.add_parameter(p)
 
     @property
     def _vector(self):
-        return self._array[self.index]
+        return self._array[self._index]
 
     def add_parameter(self, parameter):
         parameter.first_index = self.size
         self.size += parameter.size
         parameter.last_index = self.size-1
-        self._vector.extend([parameter.initial_value]*parameter.size)
+        self._vector.extend(parameter.initial_value*parameter.size)
         self._dict[parameter.name] = parameter
         parameter.phi = self
 
-    def __str__(self):
-        return str(self._dict)
+    def resample(self, inplace=False):
+        samples = []
+        for p in self._dict.values():
+            samples.append(p.resample(inplace=inplace))
+        if not inplace:
+            vector = []
+            for s in samples:
+                vector.extend(np.ravel(s))
+            return vector
 
-    # TODO: would need to propagate to/from_json calls from Module, and collect
-    #       json representations from Parameters, and store _vector.
+    def set_index(self, i, new_vector='resample'):
+        array_length = len(self._array)
+        if i >= array_length:
+            # Array isn't that big yet, so add new vector(s).
+            new_indices = range(array_length, i+1)
+            match new_vector:
+                case 'resample':
+                    new_vectors = [self.resample() for j in new_indices]
+                case 'copy':
+                    new_vectors = [self._vector.copy() for j in new_indices]
+
+        self._array.extend(new_vectors)
+        self._index = i
+
     def to_json(self):
-        pass
+        """Encode Phi object as json. See `nems.tools.json`."""
+        p = list(self._dict.values())
+        return {'_array': self._array, '_index': self._index, 'parameters': p}
 
     def from_json(json):
-        pass
+        """Decode Phi object from json. See `nems.tools.json`."""
+        phi = Phi(*json['parameters'])
+        phi._array = json['_array']
+        phi._index = json['_index']
+
+        return phi
 
     # Provide dict-like interface
     def __getitem__(self, key):
@@ -484,18 +510,17 @@ class Phi:
     def __repr__(self):
         return str(self._dict)
 
+    def __str__(self):
+        return str(self._dict)
+
 
 class Parameter:
-    # TODO: rename to Parameter and refactor rest of code
-
-    # TODO: incorporate bounds and priors here
-
     # TODO: is there a straightforward way to mimic a numpy array here?
     #       ex: would be nice to be able to use @ operator directly on a
     #       coefficients parameter instead of parameter.values.
 
-    def __init__(self, name, shape=(1,), dtype=np.float64, 
-                 bounds=None, prior=None):
+    def __init__(self, name, shape=(1,), dtype=np.float64, bounds=None,
+                 prior=None):
         self.name = name
         self.shape = shape
         self.size = 1
@@ -504,10 +529,12 @@ class Parameter:
         self.dtype = dtype
 
         if prior is None:
-            self.prior = Normal(mean=0, std=1)  # default to standard normal
+            self.prior = Normal(mean=0, sd=1)  # default to standard normal
         if bounds is None:
-            self.bounds = (self.prior.ppf(0.0001), self.prior.ppf(0.9999))
-        self.initial_value = self.initialize()
+            self.bounds = (self.prior.percentile(0.0001),
+                           self.prior.percentile(0.9999))
+        sample = self.prior.sample(bounds=self.bounds)
+        self.initial_value = np.ravel(sample).tolist()
 
         # Must be set by Phi for .values to work.
         self.phi = None  # Pointer to parent Phi instance.
@@ -519,9 +546,12 @@ class Parameter:
         values = self.phi._vector[self.first_index:self.last_index+1]
         return np.reshape(values, self.shape)
 
-    def initialize(self):
-        value = None  # TODO: need to finish testing distribution sample method
-        return value
+    def resample(self, inplace=False):
+        sample = self.prior.sample(bounds=self.bounds)
+        if inplace:
+            self.update(sample)
+        else:
+            return sample
 
     def update(self, value):
         if self.shape == (1,) and np.isscalar(value):
@@ -536,13 +566,16 @@ class Parameter:
             self.phi._vector[self.first_index:self.last_index+1] = flat_value
 
     def to_json(self):
+        """Encode Parameter object as json. See `nems.tools.json`."""
+        # TODO: something in here is breaking serialization.
         data = {'name': self.name, 'shape': self.shape, 'dtype': self.dtype,
-                'values': self.values}
-        return json.dumps(data)
+                'prior': self.prior, 'bounds': self.bounds}
+        # Encoder adds an extra key, so nest the dict to keep kwargs separate.
+        return {'data': data}
 
     def from_json(json):
-        data = json.loads(json)
-        return Parameter(**data)
+        """Decode Parameter object from json. See `nems.tools.json`."""
+        return Parameter(**json['data'])
 
     def __repr__(self):
         # TODO: how to fix format for printing? Apparently __repr__ always
@@ -555,3 +588,10 @@ class Parameter:
         string = (f"Parameter(shape={self.shape}, dtype={self.dtype})"
                   f".values = {self.values}")
         return string
+
+    # TODO: untested, but I'm hoping it might be this simple...
+    #       (should pass all numpy ufuncs to self.values)
+    def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
+        array = self.values
+        new_array = array.__array_ufunc__(ufunc, method, *inputs, **kwargs)
+        self.update(new_array)
