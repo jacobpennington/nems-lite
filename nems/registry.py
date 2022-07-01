@@ -1,4 +1,4 @@
-# TODO: should this go in nems.modules directory instead?
+# TODO: should this go in nems.layers directory instead?
 
 import logging
 import inspect
@@ -32,7 +32,7 @@ class Keyword:
             Function that parses the full keyword string. In most cases this
             should be the `from_keyword` method of the relevant Module.
         source_string : str, optional
-            Location (i.e., python module or file) where `parse` was defined.
+            Location (i.e., python layer or file) where `parse` was defined.
 
         Example
         -------
@@ -49,7 +49,7 @@ class Keyword:
 
 
 class KeywordRegistry:
-    '''A collection of Keywords registered by the `@module` decorator.
+    '''A collection of Keywords registered by the `@layer` decorator.
 
     A `KeywordRegistry` behaves similar to a dictionary, except that
     `KeywordRegistry[key_string]` will trigger a function call with `key_string`
@@ -190,10 +190,10 @@ class KeywordRegistry:
         return s
 
 
-# Create registries here so they can be updated as new modules are imported.
-keyword_lib = KeywordRegistry(name="modules", warn_on_overwrite=True)
+# Create registries here so they can be updated as new layers are imported.
+keyword_lib = KeywordRegistry(name="layers", warn_on_overwrite=True)
 
-def module(name=None):
+def layer(name=None):
     """Decorator for `Module.from_keyword()` methods.
     
     Returns
@@ -204,7 +204,7 @@ def module(name=None):
     Example
     -------
     ```
-    @module('cool')
+    @layer('cool')
     def from_keyword(keyword):
         # parse keyword into some Module options
         option1, option2 = my_kw_parser(keyword)

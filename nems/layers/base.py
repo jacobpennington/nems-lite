@@ -2,7 +2,7 @@ import json
 
 import numpy as np
 
-from nems.registry import module
+from nems.registry import layer
 from nems.distributions import Normal
 
 
@@ -10,7 +10,7 @@ class Layer:
     """
     Encapsulates one data-transformation step of a NEMS ModelSpec.
 
-    Base class for NEMS Modules.
+    Base class for NEMS Layers.
 
     TODO / NOTE:
     1) Currently keeping phi the same (but renamed self.parameters for clarity)
@@ -26,11 +26,11 @@ class Layer:
        the module (like forming bounds arrays).
 
     1b) This is related to another problem I'm coming across: how to properly
-        document/enforce the parameter structure for each Module. Currently,
+        document/enforce the parameter structure for each Layer. Currently,
         users are expected to either know the dict format (i.e. which parameters
         are expected, whether they should be scalar or array, etc) or always
         start with the defaults we provide. Documenting the parameters in
-        `Module.__init__()` is better than old NEMS, but I think using something
+        `Layer.__init__()` is better than old NEMS, but I think using something
         like a Phi class to explicitly require specific parameters with a given
         shape (similar to declaring model variables in Tensorflow or other
         packages) would be clearer.
@@ -49,7 +49,7 @@ class Layer:
         parameters in the method definition, followed by **kwargs, and invoke
         super().__init__(**kwargs) to ensure all required attributes are set
         correctly. While not strictly required, this is the easiest way to
-        ensure Modules are functional.
+        ensure Layers are functional.
 
         For example:
         ```
@@ -93,7 +93,7 @@ class Layer:
         #       `return getattr(self, key)` instead, but I think doing this for
         #       just parameters makes more sense. That's the dict that gets
         #       accessed the most, and this makes that require less typing:
-        #       `Module['a']` instead of `Module['parameters']['a'].`
+        #       `Layer['a']` instead of `Layer['parameters']['a'].`
         #       The getattr version could also be confusing since not all of
         #       the attributes are dicts (so further indexing won't always work)
         return self.parameters[key]
@@ -162,14 +162,14 @@ class Layer:
 
     # TODO: after working through this a bit (the phi & bounds -> vector stuff),
     #       starting to think it makes more sense to keep this separate from
-    #       Module classes. Hard to think of a use-case where some one would
+    #       Layer classes. Hard to think of a use-case where some one would
     #       need to break the phi dict format, in which case the existing
     #       functions would still work fine (just have model collect all the
     #       phi dicts and pass them off). And these really clutter up the base
-    #       class with stuff that isn't directly related to Module evaluation.
+    #       class with stuff that isn't directly related to Layer evaluation.
     #
     #       Leaving in for now to illustrate the idea, but probably not needed
-    #       since the generic fn should work for all Modules. Would only be a
+    #       since the generic fn should work for all Layers. Would only be a
     #       benefit if we want people to be able to define phi in other ways,
     #       in which case they could also implement the vector mapping.
     def parameters_to_vector(self):
@@ -178,7 +178,7 @@ class Layer:
         
         This is a helper method for fitters that use scipy.optimize. SciPy
         optimizers require parameters to be a single vector, but it's more
-        intuitive/user-friendly for Modules to keep a dictionary representation.
+        intuitive/user-friendly for Layers to keep a dictionary representation.
 
         Returns
         -------
@@ -241,8 +241,8 @@ class Layer:
         ub = {}
         for name, phi in self.parameters.items():
             bounds = self.bounds.get(name, (None, None))
-            lb[name] = Module._to_bounds_array(bounds, phi, 'lower')
-            ub[name] = Module._to_bounds_array(bounds, phi, 'upper')
+            lb[name] = Layer._to_bounds_array(bounds, phi, 'lower')
+            ub[name] = Layer._to_bounds_array(bounds, phi, 'upper')
 
     def _to_bounds_array(value, phi, which):
         if which is 'lower':
@@ -270,24 +270,24 @@ class Layer:
 
     def to_json(self):
         # TODO: package parameters, bounds, etc, into dict w/ same format as old
-        #       module dicts. Won't be fully backwards compatible but should
+        #       layer dicts. Won't be fully backwards compatible but should
         #       make it easier to write an old -> new model conversion utility.
         pass
 
     def from_json(json):
-        # TODO: Reverse of above, return Module instance using dict for kwargs.
+        # TODO: Reverse of above, return Layer instance using dict for kwargs.
         #       Some attributes may need to be set separately.
         pass
 
-    @module('baseclass')
+    @layer('baseclass')
     def from_keyword(keyword):
-        """TODO: doctring explaining how to use this in subclassed modules."""
-        return Module()
+        """TODO: doctring explaining how to use this in subclassed layers."""
+        return Layer()
 
     def evaluate(self, *args):  
         """Applies some mathematical operation to the argument(s).
         
-        Each Module subclass is expected to redefine this method. Any number of
+        Each Layer subclass is expected to redefine this method. Any number of
         parameters is acceptable, but each should correspond to one name in
         `self.input`. An arbitrary number of return values is also allowed, and
         each should correspond to one name in `self.output`. Input and output
@@ -318,7 +318,7 @@ class Layer:
         the result would be:
             ```
             *args = (x, y, z)
-            Module.evaluate(*args) = (x+y, 2*z)
+            Layer.evaluate(*args) = (x+y, 2*z)
             Recording.signals = {'one': x, 'two': x+y, 'three': z, 'new': 2*z}
             ```
 
@@ -328,7 +328,7 @@ class Layer:
 
     # TODO: is this really needed?
     def description(self):
-        """Optional short description of `Module`'s function.
+        """Optional short description of `Layer`'s function.
         
         Defaults to the docstring for self.evaluate if not overwritten.
 
@@ -346,7 +346,7 @@ class Layer:
         return help(self.evaluate)
 
     def tensorflow_layer(self):
-        """Builds a `Tensorflow.keras.layers.Layer` equivalent to this Module.
+        """Builds a `Tensorflow.keras.layers.Layer` equivalent to this Layer.
 
         TODO: How would this fit into the arbitrary input/output scheme that
               .evaluate() uses for scipy optimization? Maybe it can't, since
@@ -368,7 +368,7 @@ class Layer:
 
 
 
-# TODO: What does this do? Looks like it imports all module modules (hah) in
+# TODO: What does this do? Looks like it imports all layer modules  in
 #       the same directory. But why? Ask Stephen. If it needs to stay, add
 #       documentation.
 
@@ -387,7 +387,7 @@ class Phi:
     #       to document, Phi provides a dict-like interface for users but keeps
     #       a persistent vector (list) representation under the hood.
     #
-    #       In each module, this would be set up in .initial_parameters or
+    #       In each layer, this would be set up in .initial_parameters or
     #       somewhere similar, along the lines of:
     #       ```
     #       self.parameters = Phi(
