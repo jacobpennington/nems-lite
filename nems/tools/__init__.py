@@ -18,4 +18,4 @@ Contents
 
 """
 
-from .json import NEMSEncoder, NEMSDecoder
+from .json import nems_to_json, nems_from_json, NEMSEncoder, NEMSDecoder

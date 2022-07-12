@@ -124,3 +124,12 @@ for cls in _NEMS_classes_to_encode:
     decoder = partialmethod(_generic_NEMS_decoder, cls=cls)
     setattr(NEMSEncoder, f'encode_{name}', _generic_NEMS_encoder)
     setattr(NEMSDecoder, f'decode_{name}', decoder)
+
+
+# Convenience functions so that front-end users don't need to remember to use
+# cls=NEMSEncoder/Decoder.
+def nems_to_json(obj):
+    json.dumps(obj, cls=NEMSEncoder)
+
+def nems_from_json(obj):
+    json.loads(obj, cls=NEMSDecoder)
