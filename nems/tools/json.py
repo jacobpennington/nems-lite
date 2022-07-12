@@ -30,7 +30,11 @@ This ensures that the JSON encoder/decoder code does not depend on details of
 individual classes, as they may change. Similarly, individual classes don't need
 to worry about encoding/decoding details: they just need to return/load from a
 dictionary that is suitable for standard `json.dumps`, i.e. it contains only
-strings, lists, ints, etc.
+strings, lists, ints, etc. Additionally, classes don't need to worry about
+encoding of other nems objects. I.e. a Phi instance contains a dict with
+Parameter instances; however, since both classes implement `.to_json`,
+`json.dumps` will happily handle the details of encoding all Parameters before
+storing them in the encoded Phi instance.
 
 References
 ----------

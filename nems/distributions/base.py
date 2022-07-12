@@ -56,9 +56,23 @@ class Distribution:
     def shape(self):
         return self.mean().shape
 
-    def sample(self, n=None, bounds=None):
-        if n is None:
-            n = 1
+    def sample(self, n=1, bounds=None):
+        """Draw random sample(s) from a (truncated) distribution.
+        
+        Parameters
+        ----------
+        n : int
+            Number of random samples to get.
+        bounds : 2-tuple or None
+            If not None, samples with at least one value less than `bounds[0]`
+            or greater than `bounds[1]` will be rejected and replaced with
+            a new sample.
+
+        Returns
+        -------
+        good_sample : ndarray
+        
+        """
         size = [n] + list(self.shape)
         good_sample = np.full(shape=size, fill_value=np.nan)
 
@@ -73,9 +87,10 @@ class Distribution:
                 break
 
         # Drop first dimension if n = 1
-        final_sample = np.squeeze(good_sample, axis=0)
+        if n == 1:
+            good_sample = np.squeeze(good_sample, axis=0)
 
-        return final_sample
+        return good_sample
 
     def tolist(self):
         """Represent distribution as a list.
