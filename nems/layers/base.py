@@ -14,12 +14,52 @@ class Layer:
 
     """
 
-    def __init__(self, input=None, output=None, parameters=None,
-                 bounds=None, priors=None, name=None):
+    def __init__(self, input=None, output=None, parameters=None, priors=None,
+                 bounds=None, default_bounds='infinite', name=None):
         """Encapsulates one data-transformation step of a NEMS ModelSpec.
 
-        Note
-        ----
+        Layers are intended to exist as components of a parent Model instance
+        by invoking `Model.add_layer` or `Model.__init__(layers=...)`.
+
+        Parameters
+        ----------
+        input : str, list, dict, or None; optional
+            Specifies which data streams should be provided as inputs by
+            parent Model during fitting, where strings refer to keys for a
+            dict of arrays provided to `Model.fit`.
+            If None : output of previous Layer.
+            If str  : a single input array.
+            If list : many input arrays.
+            If dict : many input arrays, with keys specifying which parameter
+                      of `Layer.evaluate` each array is associated with.
+
+            # TODO: examples from simple_fit.py to illustrate usage
+            
+        output : str, list, or None; optional
+            Specifies name(s) for array output(s) of `Layer.evaluate`.
+            If None : use default name specified by parent Model.
+            If str  : same name for every output (incremented if multiple).
+            If list : one name per output (length must match).
+
+        parameters : nems.layers.base.Phi or None; optional
+            Specifies values for fittable parameters used by `Layer.evaluate`.
+            If None : Phi instance returned by `Layer.initial_parameters`.
+        bounds : dict of 2-tuples or None; optional
+            Determines minimum and maximum values for fittable parameters. Keys
+            must correspond to names of parameters, such that each Parameter
+            instance utilizes `Parameter(name, bounds=bounds[name])`.
+            If None : use defaults defined in `Layer.initial_parameters`.
+        default_bounds : str, default='infinite'
+            Determines behavior when `bounds=None` for individual parameters.
+            If `'infinite'`  : set bounds to (-np.inf, np.inf)
+            If `'percentile'`: set bounds to tails of `Parameter.prior`.
+                (prior.percentile(0.0001), prior.percentile(0.9999))
+        name : str or None; optional
+            A name for the Layer so that it can be referenced through the
+            parent Model, in addition to integer indexing.
+
+        Notes
+        -----
         Subclasses that need to overwrite `__init__()` should only specify new
         parameters in the method definition, followed by **kwargs, and invoke
         super().__init__(**kwargs) to ensure all required attributes are set
@@ -35,15 +75,16 @@ class Layer:
         See also
         --------
         nems.models.base.Model
+        nems.layers.base.Phi
+        nems.layers.base.Parameter
 
         """
 
+        # input/output should be a list of strings, a dict of strings, or None
         if isinstance(input, str):
             self.input = [input]
         else:
-            # Should be a list of strings or None
             self.input = input
-
         if isinstance(output, str):
             self.output = [output]
         else:
@@ -56,209 +97,17 @@ class Layer:
 
         if parameters is None:
             parameters = self.initial_parameters()
-        # TODO: should this be done automatically? maybe expose an option, like
-        #       `initialize_to_mean=True`? Either way needs more thought, this
-        #       would just overwrite initial.
-        # if self.priors is not None:
-        #     parameters = self.mean_of_priors()
         self.parameters = parameters
-
-
-    def __getitem__(self, key):
-        # TODO: If we want to expose priors, bounds, etc. as well this can be
-        #       `return getattr(self, key)` instead, but I think doing this for
-        #       just parameters makes more sense. That's the dict that gets
-        #       accessed the most, and this makes that require less typing:
-        #       `Layer['a']` instead of `Layer['parameters']['a'].`
-        #       The getattr version could also be confusing since not all of
-        #       the attributes are dicts (so further indexing won't always work)
-        return self.parameters[key]
-    
-    def get(self, key, default=None):
-        if key in self.parameters:
-            val = self.parameters[key]
-        else:
-            val = default
-        return val
-
-    def __setitem__(self, key, val):
-        self.parameters[key] = val
-
-    def __repr__(self):
-        return str(self.__class__)
-
-    def set_parameter_values(self, parameter_dict):
-        for k, v in parameter_dict.items():
-            self.parameters[k] = v
-
-    def get_parameter_values(self, *parameter_keys):
-        if len(parameter_keys) == 0:
-            values = self.parameters.get_values
-        else:
-            values = [self.parameters[k].values for k in parameter_keys]
-        return values
-
-    # TODO: Alternatively, break old terminology a bit and use phi to refer to
-    # the vectorized parameters only? Then this can look something like:
-    #     ```
-    #     if self.phi_vector is None:
-    #         return parameters_to_vector()
-    #     else:
-    #         return self.phi_vector
-    #     ```
-    # This would make it easier to keep the difference clear when setting
-    # up methods/variables for mid-fit representation (vectorized) vs user
-    # friendly representation (dictionary).
-    @property
-    def phi(self):
-        """Alias for `self.parameters`."""
-        return self.parameters
-
-    def sample_from_priors(self):
-        # TODO: Don't remember if Prior.sample() is actually correct, but
-        #       this should be pretty close. Come back to this.
-        parameters = {}
-        for key in self.parameters.keys():
-            parameters[key] = self.priors[key].sample()
-        return parameters
-
-    def mean_of_priors(self):
-        # TODO: Don't remember if Prior.mean() is actually correct, but
-        #       this should be pretty close. Come back to this.
-        parameters = {}
-        for key in self.parameters.keys():
-            parameters[key] = self.priors[key].mean()
-        return parameters
-
-    def freeze_parameters(self):
-        # TODO: copy to something like fn_kwargs as before? could even automate
-        #       the dict updates somewhere to keep .evaluate() simple.
-        pass
-
-
-    # TODO: after working through this a bit (the phi & bounds -> vector stuff),
-    #       starting to think it makes more sense to keep this separate from
-    #       Layer classes. Hard to think of a use-case where some one would
-    #       need to break the phi dict format, in which case the existing
-    #       functions would still work fine (just have model collect all the
-    #       phi dicts and pass them off). And these really clutter up the base
-    #       class with stuff that isn't directly related to Layer evaluation.
-    #
-    #       Leaving in for now to illustrate the idea, but probably not needed
-    #       since the generic fn should work for all Layers. Would only be a
-    #       benefit if we want people to be able to define phi in other ways,
-    #       in which case they could also implement the vector mapping.
-    def parameters_to_vector(self):
-        """
-        Return `self.parameters` formatted as list.
-        
-        This is a helper method for fitters that use scipy.optimize. SciPy
-        optimizers require parameters to be a single vector, but it's more
-        intuitive/user-friendly for Layers to keep a dictionary representation.
-
-        Returns
-        -------
-        list
-
-        Examples
-        --------
-        >>> self.parameters = {'baseline': 0, 'coefs': [32, 41.8]}
-        >>> parameters_to_vector(self)
-        [0, 32, 41.8]
-        >>> self.parameters = {'coefs': [[1, 2], [3, 4], [5, 6]]}
-        >>> parameters_to_vector(phi)
-        [1, 2, 3, 4, 5, 6]
-
-        """
-        vector = []  # list append is faster than np array append
-        for k in sorted(self.parameters.keys()):
-            value = self.parameters[k]
-            flattened_value = np.asanyarray(value).ravel()
-            vector.extend(flattened_value)
-
-        return vector
-
-    def vector_to_parameters(self, vector):
-        """
-        Convert parameter vector to a dictionary and update `self.parameters`.
-
-        Parameters
-        ----------
-        vector : list
-
-        Example
-        -------
-        >>> self.parameters = {'baseline': 0, 'coefs': [0, 0]}
-        >>> vector = [0, 32, 41]
-        >>> vector_to_phi(self, vector)
-        >>> self.parameters
-        {'baseline': 0, 'coefs': array([32, 41])}
-
-        """
-        index = 0
-        parameter_template = self.parameters.copy()
-        
-        for k in sorted(parameter_template.keys()):
-            value_template = parameter_template[k]
-            if np.isscalar(value_template):
-                value = vector[index]
-                index += 1
-            else:
-                value_template = np.asarray(value_template)
-                size = value_template.size
-                value = np.asarray(vector[index:index+size])
-                value.shape = value_template.shape
-                index += size
-            self.parameters[k] = value
-
-    def bounds_to_vector(self):
-        """Return `self.bounds` formatted as a list."""
-        lb = {}
-        ub = {}
-        for name, phi in self.parameters.items():
-            bounds = self.bounds.get(name, (None, None))
-            lb[name] = Layer._to_bounds_array(bounds, phi, 'lower')
-            ub[name] = Layer._to_bounds_array(bounds, phi, 'upper')
-
-    def _to_bounds_array(value, phi, which):
-        if which == 'lower':
-            default_value = -np.inf
-            i = 0
-
-        elif which == 'upper':
-            default_value = np.inf
-            i = 1
-
-        value = value[i]
-
-        if isinstance(value, list):
-            value = np.array(value)
-
-        if value is None:
-            return np.full_like(phi, default_value, dtype=np.float)
-
-        if isinstance(value, np.ndarray):
-            if value.shape != phi.shape:
-                raise ValueError('Bounds wrong shape')
-            return value
-
-        return np.full_like(phi, value, dtype=np.float)
-
-    def to_json(self):
-        # TODO: package parameters, bounds, etc, into dict w/ same format as old
-        #       layer dicts. Won't be fully backwards compatible but should
-        #       make it easier to write an old -> new model conversion utility.
-        pass
-
-    def from_json(json):
-        # TODO: Reverse of above, return Layer instance using dict for kwargs.
-        #       Some attributes may need to be set separately.
-        pass
 
     @layer('baseclass')
     def from_keyword(keyword):
         """TODO: doctring explaining how to use this in subclassed layers."""
         return Layer()
+
+    def initial_parameters(self):
+        """TODO: docstring explaining idea, most subclasses will need to write
+        their own."""
+        return None
 
     def evaluate(self, *args):  
         """Applies some mathematical operation to the argument(s).
@@ -302,6 +151,112 @@ class Layer:
 
         raise NotImplementedError(f'{self.__class__} has not defined evaluate.')
 
+    def tensorflow_layer(self):
+        """Builds a `Tensorflow.keras.layers.Layer` equivalent to this Layer.
+
+        TODO: How would this fit into the arbitrary input/output scheme that
+              .evaluate() uses for scipy optimization? Maybe it can't, since
+              Tensorflow already has its own way of managing the data flow.
+
+        TODO: should layers be instantiated at this point, or just return
+              the layer class? (probably with some frozen kwargs). Depends
+              on how the higher-level model builder is formated.
+
+        """
+        raise NotImplementedError(
+            f'{self.__class__} has not defined a Tensorflow implementation.'
+            )
+
+    def set_parameter_values(self, parameter_dict):
+        """Set new parameter values from key, value pairs."""
+        self.parameters.update(parameter_dict)
+
+    def get_parameter_values(self, *parameter_keys):
+        """Return all parameter values formatted as a list of arrays."""
+        return self.parameters.get_values(*parameter_keys)
+
+    def sample_from_priors(self, inplace=True, as_vector=False):
+        """Get or set new parameter values by sampling from priors.
+        
+        Parameters
+        ----------
+        inplace : bool, default=True
+            If True, sampled values will be used to update each Parameter
+            instance (and, in turn, `Phi._array`) inplace. Otherwise, the
+            sampled values will be returned without changing current values.
+        as_vector : bool, default=False
+            If True, return sampled values as a flattened list instead of a
+            list of arrays.
+
+        Return
+        ------
+        samples
+
+        See also
+        --------
+        nems.layers.base.Phi.sample
+
+        """
+        return self.parameters.sample(inplace=inplace, as_vector=as_vector)
+
+    def mean_of_priors(self, inplace=True, as_vector=False):
+        """Get, or set parameter values to, mean of priors.
+        
+        Parameters
+        ----------
+        inplace : bool, default=True
+            If True, mean values will be used to update each Parameter
+            instance (and, in turn, `Phi._array`) inplace. Otherwise, means
+            will be returned without changing current values.
+        as_vector : bool, default=False
+            If True, return means as a flattened list instead of a
+            list of arrays.
+
+        Return
+        ------
+        means : list
+
+        See also
+        --------
+        nems.layers.base.Phi.mean
+
+        """
+        return self.parameters.mean(inplace=inplace, as_vector=as_vector)
+
+    def freeze_parameters(self):
+        # TODO: copy to something like fn_kwargs as before? could even automate
+        #       the dict updates somewhere to keep .evaluate() simple.
+        pass
+
+    # Passthrough dict-like interface for Layer.parameters
+    # NOTE: 'get' operations through this interface return Parameter instances,
+    #       not arrays. For array format, reference Parameter.values or use
+    #       `Layer.get_parameter_values`.
+    def __getitem__(self, key):
+        return self.parameters[key]
+    
+    def get(self, key, default=None):
+        return self.parameters.get(key, default=default)
+
+    def __setitem__(self, key, val):
+        self.parameters[key] = val
+
+    def __iter__(self):
+        return self.parameters.__iter__()
+
+    def keys(self):
+        return self.parameters.keys()
+
+    def items(self):
+        return self.parameters.items()
+
+    def values(self):
+        return self.parameters.values()
+
+    # TODO: make this more informative
+    def __repr__(self):
+        return str(self.__class__)
+
     # TODO: is this really needed?
     def description(self):
         """Optional short description of `Layer`'s function.
@@ -321,27 +276,22 @@ class Layer:
 
         return help(self.evaluate)
 
-    def tensorflow_layer(self):
-        """Builds a `Tensorflow.keras.layers.Layer` equivalent to this Layer.
+    # Add compatibility for saving to .json
+    def to_json(self):
+        # TODO: package parameters, bounds, etc, into dict w/ same format as old
+        #       layer dicts. Won't be fully backwards compatible but should
+        #       make it easier to write an old -> new model conversion utility.
+        pass
 
-        TODO: How would this fit into the arbitrary input/output scheme that
-              .evaluate() uses for scipy optimization? Maybe it can't, since
-              Tensorflow already has its own way of managing the data flow.
+    def from_json(json):
+        # TODO: Reverse of above, return Layer instance using dict for kwargs.
+        #       Some attributes may need to be set separately.
+        pass
 
-        TODO: should layers be instantiated at this point, or just return
-              the layer class? (probably with some frozen kwargs). Depends
-              on how the higher-level model builder is formated.
 
-        """
-        raise NotImplementedError(
-            f'{self.__class__} has not defined a Tensorflow implementation.'
-            )
-
-    def initial_parameters(self):
-        """TODO: docstring explaining idea, most subclasses will need to write
-        their own."""
-        return None
-
+# TODO: method for removing parameter(s), e.g. when freezing
+#       probably return a new Phi with some dropped, make fn_kwargs or equivalent
+#       a separate Phi instance.
 
 # TODO: add examples and tests
 #       (for both Phi and Parameter)
@@ -357,7 +307,7 @@ class Phi:
 
         Parameters
         ----------
-        parameters : N-tuple of Parameter instances
+        parameters : N-tuple of Parameter instances; optional
 
         See also
         --------
@@ -378,6 +328,35 @@ class Phi:
         """Return a slice of `Phi._array` at `Phi._index`."""
         return self._array[self._index]
 
+    def bounds_vector(self, none_for_inf=True):
+        """Return a list of bounds from each parameter in `Phi._dict`.
+        
+        Parameters
+        ----------
+        none_for_inf : bool, default=True
+            If True, replace (+/-)`np.inf` with None for compatibility with
+            `scipy.optimize.minimize`.
+        
+        Returns
+        -------
+        bounds : list of 2-tuples
+        
+        """
+        bounds = [p.bounds for p in self._dict.values()]
+        if none_for_inf:
+            subbed_bounds = []
+            for b in bounds:
+                lower, upper = b
+                if np.isinf(lower):
+                    lower = None
+                if np.isinf(upper):
+                    upper = None
+                subbed_bounds.append((lower, upper))
+            bounds = subbed_bounds
+        
+        return bounds
+
+
     def add_parameter(self, parameter):
         """Add a new parameter to `Phi._dict` and update `Phi._array`.
         
@@ -392,31 +371,66 @@ class Phi:
         self._dict[parameter.name] = parameter
         parameter.phi = self
 
-    def sample(self, inplace=False):
+    @staticmethod
+    def values_to_vector(values):
+        """Flatten a list of Parameter.values."""
+        vector = []
+        for v in values:
+            vector.extend(np.ravel(v))
+        return vector
+
+    def sample(self, inplace=False, as_vector=True):
         """Get or set new parameter values by sampling from priors.
         
         Parameters
         ----------
-        inplace : bool
+        inplace : bool, default=False
             If True, sampled values will be used to update each Parameter
             instance (and, in turn, `Phi._array`) inplace. Otherwise, the
             sampled values will be returned without changing current values.
+        as_vector : bool, default=True
+            If True, return sampled values as a flattened list instead of a
+            list of arrays.
 
         Return
         ------
-        vector : list
-            Parameter values formatted as a flattened vector.
+        samples : list
 
         """
         samples = []
         for p in self._dict.values():
             samples.append(p.sample(inplace=inplace))
+        if as_vector:
+            samples = Phi.values_to_vector(samples)
 
-        vector = []
-        for s in samples:
-            vector.extend(np.ravel(s))
+        return samples
 
-        return vector
+    def mean(self, inplace=False, as_vector=True):
+        """Get, or set parameter values to, mean of priors.
+        
+        Parameters
+        ----------
+        inplace : bool, default=False
+            If True, mean values will be used to update each Parameter
+            instance (and, in turn, `Phi._array`) inplace. Otherwise, means
+            will be returned without changing current values.
+        as_vector : bool, default=True
+            If True, return means as a flattened list instead of a
+            list of arrays.
+
+        Return
+        ------
+        means : list
+
+        """
+        means = []
+        for p in self._dict.values():
+            means.append(p.mean(inplace=inplace))
+        if as_vector:
+            means = Phi.values_to_vector(means)
+        
+        return means
+
 
     def set_index(self, i, new_vector='resample'):
         """Change which vector to reference within `Phi._array`.
@@ -450,6 +464,7 @@ class Phi:
         self._array.extend(new_vectors)
         self._index = i
 
+
     # Provide dict-like interface into Phi._dict
     def __getitem__(self, key):
         return self._dict[key]
@@ -462,7 +477,7 @@ class Phi:
         return val
 
     def get_values(self, *keys):
-        return [self.get(k).values for k in keys]
+        return [self._dict[k].values for k in keys]
 
     def update(self, dct):
         for k, v in dct.items():
@@ -529,9 +544,9 @@ class Parameter:
             This will also be the Parameter's key in `Phi._dict`.
         shape : N-tuple, default=()
             Shape of `Parameter.values`.
-        prior : nems.distributions.Distribution or None
+        prior : nems.distributions.Distribution or None; optional
             Prior distribution for this parameter, with matching shape.
-        bounds : 2-tuple or None
+        bounds : 2-tuple or None; optional
             (minimum, maximum) values for the entries of `Parameter.values`.
         default_bounds : str, default='infinite'
             Determines behavior when `bounds=None`.
@@ -600,7 +615,7 @@ class Parameter:
         inplace : bool
             If True, sampled values will be used to update `Parameter.values`
             inplace. Otherwise, the sampled values will be returned without
-            changing the current values.
+            changing current values.
 
         See also
         --------
@@ -617,6 +632,31 @@ class Parameter:
         if inplace:
             self.update(sample)
         return sample
+
+    def mean(self, inplace=False):
+        """Get, or set parameter values to, mean of priors.
+        
+        Note that `Parameter.mean()` may return a value outside of
+        `Parameter.bounds`. In that event, either priors or bounds should be
+        changed.
+
+        Parameters
+        ----------
+        inplace : bool, default=False
+            If True, mean value will be used to update `Parameter.values`
+            inplace Otherwise, mean will be returned without changing current
+            values.
+
+        Return
+        ------
+        mean : ndarray
+
+        """
+        mean = self.prior.mean()
+        if inplace:
+            self.update(mean)
+
+        return mean
 
     def update(self, value, ignore_bounds=False):
         """Set `Parameters.values` to `value` by updating `Phi._vector`.
@@ -650,6 +690,7 @@ class Parameter:
         else:
             flat_value = np.ravel(value)
             self.phi._vector[self.first_index:self.last_index+1] = flat_value
+
 
     def __repr__(self):
         data = [

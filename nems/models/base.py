@@ -5,6 +5,10 @@ class Model:
     default_state = 'state'
     default_backend = 'scipy'
 
+    def __init__(self, layers=None):
+        # TODO
+        pass
+
     def fit(self):
         # TODO: see `scripts/simple_fit.py` for ideas on how to format this.
         #       But overall, should be a straightforward wrapper/router that
