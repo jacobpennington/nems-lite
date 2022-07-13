@@ -18,8 +18,8 @@ class Layer:
                  bounds=None, default_bounds='infinite', name=None):
         """Encapsulates one data-transformation step of a NEMS ModelSpec.
 
-        Layers are intended to exist as components of a parent Model instance
-        by invoking `Model.add_layer` or `Model.__init__(layers=...)`.
+        Layers are intended to exist as components of a parent Model by
+        invoking `Model.add_layer` or `Model.__init__(layers=...)`.
 
         Parameters
         ----------
@@ -41,11 +41,11 @@ class Layer:
             (see examples below)
         parameters : nems.layers.base.Phi or None; optional
             Specifies values for fittable parameters used by `Layer.evaluate`.
-            If None : Phi instance returned by `Layer.initial_parameters`.
+            If None : Phi returned by `Layer.initial_parameters`.
         priors : dict of Distributions or None; optional
             Determines prior that each Layer parameter will sample values from.
-            Keys must correspond to names of parameters, such that Parameter
-            instances utilize `Parameter(name, prior=priors[name])`.
+            Keys must correspond to names of parameters, such that each
+            Parameter utilizes `Parameter(name, prior=priors[name])`.
             If `None` : all parameters default to Normal(mean=zero, sd=one),
             where zero and one are appropriately shaped arrays of 0 and 1.
             Individual `None` entries in a `priors` dict result in the same
@@ -53,7 +53,7 @@ class Layer:
         bounds : dict of 2-tuples or None; optional
             Determines minimum and maximum values for fittable parameters. Keys
             must correspond to names of parameters, such that each Parameter
-            instance utilizes `Parameter(name, bounds=bounds[name])`.
+            utilizes `Parameter(name, bounds=bounds[name])`.
             If None : use defaults defined in `Layer.initial_parameters`.
         default_bounds : str, default='infinite'
             Determines behavior when `bounds=None` for individual parameters.
@@ -76,7 +76,7 @@ class Layer:
         arguments (if any) in the method definition, followed by **kwargs, and
         invoke super().__init__(**kwargs) to ensure all required attributes are
         set correctly. While not strictly required, this is the easiest way to
-        ensure Layers function properly within a Model instance.
+        ensure Layers function properly within a Model.
 
         If `initial_parameters` needs access to new attributes, they should be
         set prior to invoking `super().__init__()`. New options that interact
@@ -91,7 +91,7 @@ class Layer:
         ...     self.do_something_to_priors(new_kwarg2)
 
 
-        When specifying input for Layer instances, use:
+        When specifying input for Layers, use:
         `None` to retrieve output of previous Model Layer (default).
         `'data_key'` to retrieve a single specific array.
         `['data_key1', ...]` to retrieve many arrays. This is preferred if
@@ -140,26 +140,26 @@ class Layer:
     @layer('baseclass')
     @staticmethod
     def from_keyword(keyword):
-        """Construct a Layer instance corresponding to a registered keyword.
+        """Construct a Layer corresponding to a registered keyword.
 
-        Each `Layer` subclass can (optionally) overwrite `from_keyword` to
+        Each Layer subclass can (optionally) overwrite `from_keyword` to
         enable compatibility with the NEMS keyword system. This is a
         string-based shortcut system for quickly specifying a `Model` without
-        needing to import individual `Layer` subclasses.
+        needing to import individual Layer subclasses.
 
         To work correctly within this system, a `from_keyword` method must
         follow these requirements:
         1) The `@layer` decorator, imported from `nems.registry`, must be added
            above the method. The decorator must receive a single string as
            its argument, which serves as the keyword "head": the identifier for
-           the relevant `Layer` subclass. This string must contain only letters
+           the relevant Layer subclass. This string must contain only letters
            (i.e. alphabetical characters - no numbers, punctuation, special
            characters, etc). Keyword heads are typically short and all
            lowercase, but this is not enforced.
         2) `from_keyword` must be a static method (i.e. it receives neither
            `cls` nor `self` as an implicit argument). The `@staticmethod`
            decorator is also necessary since the method will normally be
-           invoked without a reference to the relevant `Layer` instance.
+           invoked without a reference to the relevant Layer.
         3) `from_keyword` must accept a single argument. Within the keyword
            system, this argument will be a string of the form:
            `'{head}.{option1}.{option2}...'`
@@ -190,7 +190,7 @@ class Layer:
 
         Examples
         --------
-        A minimal version of `from_keyword` for WeightChannels could be defined
+        A minimal version of `from_keyword` for WeightChannels can be defined
         as follows:
         >>> class WeightChannels(Layer):
         >>>     def __init__(self, shape, **kwargs):
@@ -220,9 +220,43 @@ class Layer:
         return Layer()
 
     def initial_parameters(self):
-        """TODO: docstring explaining idea, most subclasses will need to write
-        their own."""
-        return None
+        """Get initial values for `Layer.parameters`.
+        
+        Default usage is that `Layer.initial_parameters` will be invoked during
+        construction to set `Layer.parameters` if `parameters=None`. Each
+        Layer subclass should overwrite this method to initialize appropriate
+        values for its parameters.
+
+        Returns
+        -------
+        parameters : Phi
+
+        See also
+        --------
+        nems.layers.weight_channels.WeightChannels.initial_parameters
+
+        Examples
+        --------
+        A minimal version of `initial_parameters` for WeightChannels can be
+        defined as follows:
+        >>> class WeightChannels(Layer):
+        >>>     def __init__(self, shape, **kwargs):
+        >>>         self.shape = shape
+        >>>         super().__init__(**kwargs)
+        
+        >>>     def initial_parameters(self):
+        ...         coeffs = Parameter(name='coefficients', shape=self.shape)
+        ...         return Phi(coeffs)
+
+        >>> wc = WeightChannels(shape=(2, 1))
+        >>> wc.parameters
+        Parameter(name=coefficients, shape=(2, 1))
+        .values:
+        [[0.]
+         [0.]]
+        
+        """
+        return Phi()
 
     def evaluate(self, *args):  
         """Applies some mathematical operation to the argument(s).
@@ -297,7 +331,7 @@ class Layer:
         ----------
         inplace : bool, default=True
             If True, sampled values will be used to update each Parameter
-            instance (and, in turn, `Phi._array`) inplace. Otherwise, the
+            (and, in turn, Phi._array) inplace. Otherwise, the
             sampled values will be returned without changing current values.
         as_vector : bool, default=False
             If True, return sampled values as a flattened list instead of a
@@ -321,7 +355,7 @@ class Layer:
         ----------
         inplace : bool, default=True
             If True, mean values will be used to update each Parameter
-            instance (and, in turn, `Phi._array`) inplace. Otherwise, means
+            (and, in turn, `Phi._array`) inplace. Otherwise, means
             will be returned without changing current values.
         as_vector : bool, default=False
             If True, return means as a flattened list instead of a
@@ -374,7 +408,7 @@ class Layer:
 
     # TODO: is this really needed?
     def description(self):
-        """Optional short description of `Layer`'s function.
+        """Optional short description of Layer's function.
         
         Defaults to the docstring for self.evaluate if not overwritten.
 
@@ -422,7 +456,7 @@ class Phi:
 
         Parameters
         ----------
-        parameters : N-tuple of Parameter instances; optional
+        parameters : N-tuple of Parameter; optional
 
         See also
         --------
@@ -501,8 +535,8 @@ class Phi:
         ----------
         inplace : bool, default=False
             If True, sampled values will be used to update each Parameter
-            instance (and, in turn, `Phi._array`) inplace. Otherwise, the
-            sampled values will be returned without changing current values.
+            (and, in turn, `Phi._array`) inplace. Otherwise, the sampled values
+            will be returned without changing current values.
         as_vector : bool, default=True
             If True, return sampled values as a flattened list instead of a
             list of arrays.
@@ -527,8 +561,8 @@ class Phi:
         ----------
         inplace : bool, default=False
             If True, mean values will be used to update each Parameter
-            instance (and, in turn, `Phi._array`) inplace. Otherwise, means
-            will be returned without changing current values.
+            (and, in turn, `Phi._array`) inplace. Otherwise, means will be
+            returned without changing current values.
         as_vector : bool, default=True
             If True, return means as a flattened list instead of a
             list of arrays.
@@ -620,7 +654,14 @@ class Phi:
         return self._dict.values()
 
     def __repr__(self):
-        return str(list(self._dict.values()))
+        string = ""
+        for i, p in enumerate(self._dict.values()):
+            if i != 0:
+                # Add blank line between parameters if more than one
+                string += '\n\n'
+            string += p.__repr__()
+
+        return string
 
     # Add compatibility for saving to .json
     def to_json(self):
@@ -641,17 +682,17 @@ class Parameter:
     """Stores and manages updates to values for one parameter of one Layer."""
 
     def __init__(self, name, shape=(), prior=None, bounds=None,
-                 default_bounds='infinite'):
+                 default_bounds='infinite', initial_value='mean'):
         """Stores and manages updates to values for one parameter of one Layer.
 
-        `Parameter` instances are intended to exist as components of a parent
-        `Phi` instance, by invoking `Phi.add_parameter`. Without establishing
-        this relationship, most `Parameter` methods will not work.
+        Parameters are intended to exist as components of a parent Phi instance,
+        by invoking `Phi.add_parameter`. Without establishing this relationship,
+        most Parameter methods will not work.
 
-        As with `Phi` instances, `Parameter` instances should generally not be
-        interacted with directly unless implementing new Layer subclasses or
-        other core functionality. Wherever possible, users should interact with
-        fittable parameters using Model- or Layer-level methods.
+        As with Phi, Parameters should generally not be interacted with
+        directly unless implementing new Layer subclasses or other core
+        functionality. Wherever possible, users should interact with fittable
+        parameters using Model- or Layer-level methods.
 
         Parameters
         ----------
@@ -668,6 +709,12 @@ class Parameter:
             If `'infinite'`  : set bounds to (-np.inf, np.inf)
             If `'percentile'`: set bounds to tails of `Parameter.prior`.
                 (prior.percentile(0.0001), prior.percentile(0.9999))
+        initial_value : str, scalar, or ndarray, default='mean'
+            Determines initial entries of `Parameter.values`.
+            If `'mean'`   : set values to `Parameter.prior.mean()`.
+            If `'sample'` : set values to `Parameter.prior.sample()`.
+            If scalar     : set values to `np.full(Parameter.shape, scalar)`.
+            If ndarray    : set values to array (must match `Parameter.shape`).
 
         See also
         --------
@@ -689,7 +736,12 @@ class Parameter:
             prior = Normal(mean=zero, sd=one)  
         self.prior = prior
         if prior.shape != self.shape:
-            raise ValueError("Parameter.shape != Parameter.prior.shape")
+            raise ValueError(
+                "Parameter.shape != Parameter.prior.shape for...\n"
+                f"Parameter:       {self.name}\n"
+                f"Parameter.shape: {self.shape}\n"
+                f"prior.shape:     {prior.shape}"
+                )
 
         # set default based on `default_bounds`
         if bounds is None:
@@ -699,12 +751,31 @@ class Parameter:
                 bounds = (-np.inf, np.inf)
             else:
                 raise ValueError(
-                    "default_bounds can be 'percentile' or 'infinite'"
+                    "Unrecognized default_bounds for...\n"
+                    f"Parameter:      {self.name}\n"
+                    f"default_bounds: {default_bounds}\n"
+                    "Accepted values are 'percentile' or 'infinite'."
                     )
         self.bounds = bounds
 
+        if initial_value == 'mean':
+            value = self.prior.mean()
+        elif initial_value == 'sample':
+            value = self.prior.sample(bounds=self.bounds)
+        elif np.isscalar(initial_value):
+            value = np.full(self.shape, initial_value)
+        elif isinstance(initial_value, np.ndarray):
+            value = initial_value
+        else:
+            raise ValueError(
+                "Unrecognized initial_value for...\n"
+                f"Parameter:     {self.name}\n"
+                f"initial_value: {initial_value}\n"
+                "Accepted values are 'mean', 'sample', scalar, or ndarray."
+                )
+
         sample = prior.sample(bounds=bounds)
-        self.initial_value = np.ravel(self.sample()).tolist()
+        self.initial_value = np.ravel(self.mean()).tolist()
 
         # Must be set by `Phi.add_parameter` for `Parameter.values` to work.
         self.phi = None  # Pointer to parent Phi instance.
@@ -713,7 +784,7 @@ class Parameter:
 
     @property
     def values(self):
-        """Get corresponding parameter values stored by parent Phi instance."""
+        """Get corresponding parameter values stored by parent Phi."""
         values = self.phi._vector[self.first_index:self.last_index+1]
         return np.reshape(values, self.shape)
 
@@ -793,8 +864,8 @@ class Parameter:
                 raise ValueError(
                     f"value out-of-bounds for...\n"
                     f"Parameter: {self.name}\n"
-                    f"Bounds: {self.bounds}\n"
-                    f"Value: {value}"
+                    f"Bounds:    {self.bounds}\n"
+                    f"Value:     {value}"
                 )
 
         if np.shape(value) != self.shape:
@@ -808,11 +879,10 @@ class Parameter:
 
 
     def __repr__(self):
-        data = [
-            f'Parameter(name={self.name}, shape={self.shape})',
-            f'.values: {self.values.__repr__()}'
-            ]
-        return json.dumps(data, indent=2)
+        string = f"Parameter(name={self.name}, shape={self.shape})\n" \
+                 + ".values:\n" \
+                 + f"{self.values}"
+        return string
 
     # Add compatibility for saving to .json    
     def to_json(self):
