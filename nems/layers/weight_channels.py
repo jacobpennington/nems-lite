@@ -31,7 +31,7 @@ class WeightChannels(Layer):
         
         """
         self.shape = shape
-        super.__init__(**kwargs)
+        super().__init__(**kwargs)
 
     def initial_parameters(self):
         coefficients = Parameter(name='coefficients', shape=self.shape)
@@ -54,13 +54,9 @@ class WeightChannels(Layer):
         options = keyword.split('.')
         in_out_pattern = re.compile(r'^(\d{1,})x(\d{1,})$')
         for op in options:
-            if 'x' in op:
-                parsed = re.fullmatch(in_out_pattern, op)
-                if parsed is not None:
-                    n_inputs = int(parsed.group(1))
-                    n_outputs = int(parsed.group(2))
-                    kwargs['shape'] = (n_inputs, n_outputs)
-
+            if ('x' in op) and (op[0].isdigit()):
+                dims = op.split('x')
+                kwargs['shape'] = tuple([int(d) for d in dims])
             elif op == 'g':
                 wc_class = GaussianWeightChannels
 
@@ -75,7 +71,7 @@ class GaussianWeightChannels(WeightChannels):
 
     def __init__(**kwargs):
         """TODO: overwrite docstring for expected parameters but same init."""
-        super.__init__(**kwargs)
+        super().__init__(**kwargs)
 
     def initial_parameters(self):
         n_output_channels, _ = self.shape

@@ -32,18 +32,24 @@ class Layer:
             If list : many input arrays.
             If dict : many input arrays, with keys specifying which parameter
                       of `Layer.evaluate` each array is associated with.
-
-            # TODO: examples from simple_fit.py to illustrate usage
-            
+            (see examples below)
         output : str, list, or None; optional
             Specifies name(s) for array output(s) of `Layer.evaluate`.
             If None : use default name specified by parent Model.
             If str  : same name for every output (incremented if multiple).
             If list : one name per output (length must match).
-
+            (see examples below)
         parameters : nems.layers.base.Phi or None; optional
             Specifies values for fittable parameters used by `Layer.evaluate`.
             If None : Phi instance returned by `Layer.initial_parameters`.
+        priors : dict of Distributions or None; optional
+            Determines prior that each Layer parameter will sample values from.
+            Keys must correspond to names of parameters, such that Parameter
+            instances utilize `Parameter(name, prior=priors[name])`.
+            If `None` : all parameters default to Normal(mean=zero, sd=one),
+            where zero and one are appropriately shaped arrays of 0 and 1.
+            Individual `None` entries in a `priors` dict result in the same
+            behavior for those parameters.
         bounds : dict of 2-tuples or None; optional
             Determines minimum and maximum values for fittable parameters. Keys
             must correspond to names of parameters, such that each Parameter
@@ -58,25 +64,57 @@ class Layer:
             A name for the Layer so that it can be referenced through the
             parent Model, in addition to integer indexing.
 
-        Notes
-        -----
-        Subclasses that need to overwrite `__init__()` should only specify new
-        parameters in the method definition, followed by **kwargs, and invoke
-        super().__init__(**kwargs) to ensure all required attributes are set
-        correctly. While not strictly required, this is the easiest way to
-        ensure Layers function properly within a Model instance.
-
-        For example:
-        >>> def __init__(self, new_parameter1, new_parameter2=None, **kwargs):
-        ...     super().__init__(**kwargs)
-        ...     self.something_new = new_parameter1
-        ...     self.do_something_to_priors(new_parameter2)
-
         See also
         --------
         nems.models.base.Model
         nems.layers.base.Phi
         nems.layers.base.Parameter
+
+        Examples
+        --------
+        Subclasses that need to overwrite `__init__()` should specify new
+        arguments (if any) in the method definition, followed by **kwargs, and
+        invoke super().__init__(**kwargs) to ensure all required attributes are
+        set correctly. While not strictly required, this is the easiest way to
+        ensure Layers function properly within a Model instance.
+
+        If `initial_parameters` needs access to new attributes, they should be
+        set prior to invoking `super().__init__()`. New options that interact
+        with base attributes (like `Layer.parameters` or `Layer.priors`) should
+        be coded after invoking `super().__init__()`, to ensure the relevant
+        attributes have been set.
+
+        For example:
+        >>> def __init__(self, new_arg1, new_kwarg2=None, **kwargs):
+        ...     self.something_new = new_arg1
+        ...     super().__init__(**kwargs)
+        ...     self.do_something_to_priors(new_kwarg2)
+
+
+        When specifying input for Layer instances, use:
+        `None` to retrieve output of previous Model Layer (default).
+        `'data_key'` to retrieve a single specific array.
+        `['data_key1', ...]` to retrieve many arrays. This is preferred if
+            order of arguments for `Layer.evaluate` is not important
+        `{'arg1': 'data_key1', ...}` to map many arrays to specific arguments
+            for `Layer.evaluate`.
+
+        >>> data = {'stimulus': stim, 'pupil': pupil, 'state1': state1,
+        ...         'state2': state2}
+        >>> layers = [
+        ...     WeightChannels(shape=(18,4), input='stimulus'),
+        ...     FIR(shape=(4, 25)),
+        ...     DoubleExponential(output='LN_output'),
+        ...     Sum(input=['LN_output', 'state', 'pupil'],
+        ...                output='summed_output'),
+        ...     LinearWeighting(
+        ...         input={
+        ...             'pred': 'summed_output',
+        ...             'pupil': 'pupil',
+        ...             'other_states': ['state1', 'state2']
+        ...             }
+        ...         )
+        ...     ]
 
         """
 
@@ -100,8 +138,85 @@ class Layer:
         self.parameters = parameters
 
     @layer('baseclass')
+    @staticmethod
     def from_keyword(keyword):
-        """TODO: doctring explaining how to use this in subclassed layers."""
+        """Construct a Layer instance corresponding to a registered keyword.
+
+        Each `Layer` subclass can (optionally) overwrite `from_keyword` to
+        enable compatibility with the NEMS keyword system. This is a
+        string-based shortcut system for quickly specifying a `Model` without
+        needing to import individual `Layer` subclasses.
+
+        To work correctly within this system, a `from_keyword` method must
+        follow these requirements:
+        1) The `@layer` decorator, imported from `nems.registry`, must be added
+           above the method. The decorator must receive a single string as
+           its argument, which serves as the keyword "head": the identifier for
+           the relevant `Layer` subclass. This string must contain only letters
+           (i.e. alphabetical characters - no numbers, punctuation, special
+           characters, etc). Keyword heads are typically short and all
+           lowercase, but this is not enforced.
+        2) `from_keyword` must be a static method (i.e. it receives neither
+           `cls` nor `self` as an implicit argument). The `@staticmethod`
+           decorator is also necessary since the method will normally be
+           invoked without a reference to the relevant `Layer` instance.
+        3) `from_keyword` must accept a single argument. Within the keyword
+           system, this argument will be a string of the form:
+           `'{head}.{option1}.{option2}...'`
+           where any number of options can be specified, separated by periods.
+           Options can contain any* character other than hyphens or underscores,
+           which are reserved for composing many keywords at once.
+           Options for builtin NEMS layers mostly follow certain formatting
+           norms for consistency, but these are not enforced:
+           a) Use a lowercase 'x' between dimensions for shape:
+                `shape=(3,4)`     -> '3x4'
+           # TODO: replace examples for below with examples for layers
+           #       (but they illustrate the format in the meantime)
+           b) Scientific notation refers to negative exponents:
+                `tolerance=0.001` -> 't1e3'
+                `max_iter=1000`   -> 'i1000' or 'i1K'
+           c) Boolean options use a single lowercase letter if possible:
+                `normalize=True`  -> 'n'
+           # TODO: any other formatting norms I missed?
+           * Users should still be aware that escapes and other characters with
+           python- or system-specific meanings should be avoided/used with care.
+           Generally, sticking to alpha-numeric characters is safest.
+        4) Return an instance of a Layer subclass.
+        
+        See also
+        --------
+        nems.registry
+        nems.layers.weight_channels.WeightChannels.from_keyword
+
+        Examples
+        --------
+        A minimal version of `from_keyword` for WeightChannels could be defined
+        as follows:
+        >>> class WeightChannels(Layer):
+        >>>     def __init__(self, shape, **kwargs):
+        >>>         self.shape = shape
+        >>>         super().__init__(**kwargs)
+        
+        >>>     @layer('wtchans')
+        >>>     @staticmethod
+        >>>     def from_keyword(kw):
+        ...         options = kw.split('.')
+        ...         for op in options:
+        ...             if ('x' in op) and (op[0].isdigit()):
+        ...                 dims = op.split('x')
+        ...                 shape = tuple([int(d) for d in dims])
+        ...         # Raises UnboundLocalError if shape is never defined.
+        ...         return WeightChannels(shape)
+
+        >>> wtchans = WeightChannels.from_keyword('wtchans.18x2')
+        >>> wtchans.shape
+        (18, 2)
+        
+        Note: the actual definition referenced above uses `'wc'` as the keyword
+        head, not `'wtchans'`. The key is changed for this example to avoid
+        a name clash when testing.
+
+        """
         return Layer()
 
     def initial_parameters(self):
