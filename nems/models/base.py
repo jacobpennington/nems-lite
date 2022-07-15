@@ -7,6 +7,53 @@ class Model:
 
     def __init__(self, layers=None):
         # TODO
+        self._layers = {}  #  layer.name : layer obj, increment on clashes
+        pass
+
+    @property
+    def layers(self):
+        """Get all Model Layers. Supports integer or string indexing."""
+        return _LayerDict(self._layers)
+
+    def add_layers(self, *layers):
+        """Add Layers to this Model, stored in `Model._layers`.
+
+        Parameters
+        ----------
+        layers : N-tuple of Layers
+
+        See also
+        --------
+        nems.layers.base.Layer
+        
+        """
+        for layer in layers:
+            layer.model = self  # each layer gets a reference to parent Model
+            key = name = layer.name
+            i = 0
+            while key in self._layers:
+                # Avoid name clashes
+                key = f'{name}.{i}'
+                i += 1
+            self._layers[key] = layer
+
+    def get_layer(self, key):
+        """Get one Layer. Key can be int or string (`Layer.name`)."""
+        return self.layers[key]
+
+    def insert_layer(self, index, name=None):
+        """TODO: add layer at specific integer index."""
+        raise NotImplementedError
+
+    def evaluate(self, input):
+        # TODO: need to check for None input/output and specify 
+        #       the default behavior in those cases.
+        # inputs = [Recording[name].values for name in Layer.inputs]
+        # outputs = Layer.evaluate(inputs)
+        # Recording.update(
+        #     {name: array_to_signal(array)
+        #      for name, array in zip(Layer.output, outputs)}
+        # )
         pass
 
     def fit(self):
@@ -22,36 +69,42 @@ class Model:
         #       (see `scripts/freeze_parameters.py`)
         pass
 
-    def evaluate(self, input):
-        # TODO: need to check for None input/output and specify 
-        #       the default behavior in those cases.
-        # inputs = [Recording[name].values for name in Layer.inputs]
-        # outputs = Layer.evaluate(inputs)
-        # Recording.update(
-        #     {name: array_to_signal(array)
-        #      for name, array in zip(Layer.output, outputs)}
-        # )
+    def get_parameter_vector(self, as_list=True):
+        # TODO: for scipy fitter
         pass
 
-    def predict(self, input):
-        # TODO: I guess this would really just be a wrapper for evaluate?
+    def get_bounds_vector(self):
+        # TODO: for scipy fitter
         pass
 
-    def score(self, prediction, target):
-        # TODO: this should point to an independent utility function, but
-        #       placed here for convenience (and also to provide model defaults).
-        pass
+    def set_index(self, index, new_index='initial'):
+        """Change which set of parameter values is referenced.
 
-    def add_layers(self, *layers):
-        """Invokes `self.add_layer` for each layer in arguments."""
-        for m in layers:
-            self.add_layer(m)
+        Intended for use with jackknifing or other procedures that fit multiple
+        iterations of a single model. Rather than using many copies of a full
+        Model object, each layer tracks copies of its parameter values.
 
-    def add_layer(self):
-        # TODO: in addition to adding to a .layers list (or dict or whatever),
-        #       set `layer.model = self` so that each layer has a pointer
-        #       to its parent Modelspec.
-        pass
+        Parameters
+        ----------
+        i : int
+            New index for parameter copies. If `i-1` exceeds the number of
+            existing copies, then new copies will be added until `i` is a
+            valid index.
+        new_index : str or None, default='initial'
+            Determines how new values are generated if `i` is out of range.
+            If `'sample'`   : sample from priors.
+            Elif `'mean'`   : mean of priors.
+            Elif `'initial'`: initial value of each parameter.
+            Elif `'copy'`   : copy of current values.
+            Elif `None`     : raise IndexError instead of adding new vectors.
+
+        See also
+        --------
+        nems.layers.base.Layer.set_index
+
+        """
+        for layer in self._layers.values():
+            layer.set_index(index, new_index=new_index)
 
     def freeze_parameters(self, *layer_keys):
         """Invoke `Layer.freeze_parameters` for each keyed layer.
@@ -65,9 +118,19 @@ class Model:
         for key in layer_keys:
             self.layers[key].freeze_parameters()
 
+    def predict(self, input):
+        # TODO: I guess this would really just be a wrapper for evaluate?
+        pass
+
+    def score(self, prediction, target):
+        # TODO: this should point to an independent utility function, but
+        #       placed here for convenience (and also to provide model defaults).
+        pass
+
+    # Add compatibility for saving to json
     def to_json(self):
         # TODO
-        # iterate layer.to_json + add metadata 
+        # iterate layer.to_json + add metadata
         pass
 
     def from_json(json):
@@ -75,15 +138,33 @@ class Model:
         # store metadata, iterate layer.from_json and invoke add_layers
         pass
 
-    # TODO: not real names, just to remind me what I mean. Added methods
-    # for phi->vector->phi and bounds->vector conversion to layers. So need
-    # to add a model-level version that just collects all the pieces for fit.
-    #
-    # Considering keeping this functionality separate from these classes, adds
-    # extra complexity for not much benefit.
-    def to_vector():
-        pass
-    def from_vector():
-        pass
-    def bounds():
-        pass
+
+class _LayerDict:
+    """Simple wrapper for Layer._layers to enable int- or string-indexed gets.
+    
+    Note that index assignment is not supported. To change a Model's Layers,
+    use `Model.add_layers`, `Model.remove_layers`, etc.
+
+    """
+    def __init__(self, _dict):
+        self._dict = _dict
+        self._values = list(_dict.values())
+
+    def _container_for(self, key):
+        if isinstance(key, int):
+            container = self._values
+        else:
+            # Should be a string key
+            container = self._dict
+        return container
+
+    def __getitem__(self, key):
+        return self._container_for(key)[key]
+
+    def get(self, key, default=None):
+        container = self._container_for(key)
+        try:
+            layer = container[key]
+        except IndexError:
+            layer = default
+        return layer
