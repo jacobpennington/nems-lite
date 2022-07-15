@@ -310,6 +310,23 @@ class Layer:
         """
         raise NotImplementedError(f'{self.__class__} has not defined evaluate.')
 
+    def description(self):
+        """Short description of Layer's function.
+        
+        Defaults to `Layer.evaluate.__doc__` if not overwritten.
+
+        Example
+        -------
+        def evaluate(self):
+            '''A really long docstring with citations and notes other stuff.'''
+            return a + np.exp(b-c)
+
+        def description(self):
+            return '''Implements a simple exponential: $a + e^{(b-c)}$'''
+
+        """
+        return self.evaluate.__doc__
+
     def tensorflow_layer(self):
         """Build an equivalent `Tensorflow.keras.layers.Layer` representation.
 
@@ -327,7 +344,11 @@ class Layer:
             )
 
     def set_parameter_values(self, parameter_dict):
-        """Set new parameter values from key, value pairs."""
+        """Set new parameter values from key, value pairs.
+        
+        Alias for `Layer.update`.
+
+        """
         self.parameters.update(parameter_dict)
 
     def get_parameter_values(self, *parameter_keys):
@@ -416,18 +437,57 @@ class Layer:
         """
         self.parameters.unfreeze_parameters(*parameter_keys)
 
+    def set_index(self, i, new_index='initial'):
+        """Change which set of parameter values is referenced.
+
+        Intended for use with jackknifing or other procedures that fit multiple
+        iterations of a single model. Rather than using many copies of a full
+        Model object, each Phi object tracks copies of the underlying vector of
+        parameter values.
+
+        Parameters
+        ----------
+        i : int
+            New index for `Phi._array`. If `i >= len(Phi._array)`, then new
+            vectors will be appended until `Phi._array` is sufficiently large.
+        new_index : str or None, default='initial'
+            Determines how new vectors are generated if `i` is out of range.
+            If `'sample'`   : invoke `Phi.sample(inplace=False)`.
+            Elif `'mean'`   : invoke `Phi.mean(inplace=False)`.
+            Elif `'initial'`: set to `[p.initial_value for p in <Parameters>]`.
+            Elif `'copy'`   : copy current `Phi.get_vector()`.
+            Elif `None`     : raise IndexError instead of adding new vectors.
+
+        See also
+        --------
+        nems.models.base.Model.set_index
+
+        """
+        self.parameters.set_index(i, new_index=new_index)
+
     # Passthrough dict-like interface for Layer.parameters
     # NOTE: 'get' operations through this interface return Parameter instances,
     #       not arrays. For array format, reference Parameter.values or use
     #       `Layer.get_parameter_values`.
     def __getitem__(self, key):
+        """Get Parameter (not Parameter.values)."""
         return self.parameters[key]
     
     def get(self, key, default=None):
+        """Get Parameter (not Parameter.values)."""
         return self.parameters.get(key, default=default)
 
     def __setitem__(self, key, val):
+        """Set Parameter.values (not Parameter itself)."""
         self.parameters[key] = val
+
+    def update(self, dct):
+        """Update Parameter values (not the Parameters themselves).
+        
+        Alias for `Layer.set_parameter_values`.
+
+        """
+        self.parameters.update(dct)
 
     def __iter__(self):
         return self.parameters.__iter__()
@@ -449,31 +509,13 @@ class Layer:
         # then convert to string with "k=v" format
         self_only = ", ".join([f"{k}={v}" for k, v in self_dict.items()
                                if k not in layer_dict])
-
-        string = f"{type(self).__name__}({self_only})\n"
-        dash_break = "-"*(len(string)-2) + "\n"
+        header = f"{type(self).__name__}({self_only})\n"
+        equal_break = "="*len(header) + "\n"
+        string = equal_break + header
         string += ".parameters:\n"
-        string += dash_break
         string += self.parameters.__repr__() + "\n"
-        string += dash_break
+        string += equal_break
         return string
-
-    def description(self):
-        """Short description of Layer's function.
-        
-        Defaults to `Layer.evaluate.__doc__` if not overwritten.
-
-        Example
-        -------
-        def evaluate(self):
-            '''A really long docstring with citations and notes other stuff.'''
-            return a + np.exp(b-c)
-
-        def description(self):
-            return '''Implements a simple exponential: $a + e^{(b-c)}$'''
-
-        """
-        return self.evaluate.__doc__
 
     # Add compatibility for saving to .json
     def to_json(self):
@@ -597,15 +639,25 @@ class Phi:
             self._add_parameter(p)
         # Convert to ndarray
         self._array = np.array(self._array)
+        # Cached indexing into `_array` for `get_vector` and `set_vector`.
+        self._vector_mask = None
+        self._update_vector_mask()
 
+    # TODO: if it becomes necessary, we can relax this restriction and allow
+    #       for adding/removing Parameters. But I can't think of a case where
+    #       it would really be needed since Layer parameters aren't meant to
+    #       change, and this keeps the implementation of other methods simpler.
     def _add_parameter(self, parameter):
         """Add a new parameter to `Phi._dict` and update `Phi._array`.
         
         Sets `parameter.phi`, `parameter.first_index`, and
-        `parameter.last_index` to comply with `Phi.vector()` formatting.
+        `parameter.last_index` to comply with `Phi.ge_vector()` formatting.
         
         This method should only be invoked during construction, since
-        `Phi._array` will be converted to a ndarray afterward.
+        `Phi._array` will be converted to ndarray afterward. This limitation
+        is intentional: a Phi object is meant to represent a fixed set of
+        model parameters. If different parameters are needed after construction,
+        create a new Phi object.
         
         """
         # Start at end of existing vector, track size for next parameter
@@ -640,7 +692,21 @@ class Phi:
             mask[self._index][first:last+1] = True
         return mask
 
-    def vector(self, as_list=False):
+    def _update_vector_mask(self):
+        """Update cached copy of current mask for `Phi.<get/set>_vector`.
+        
+        This method must be invoked any time there is a change to the indices
+        within `Phi._array` to which `Phi.<get/set>_vector` would refer
+        (i.e. parameters are frozen/unfrozen, `Phi._index` changes, etc).
+        
+        """
+        parameter_ranges = [
+            (p.first_index, p.last_index) for p in self._dict.values()
+            if not p.is_frozen
+            ]
+        self._vector_mask = self._get_mask(*parameter_ranges)
+
+    def get_vector(self, as_list=False):
         """Get a copy of `Phi._array` sliced at `Phi._index`.
         
         Parameters
@@ -653,15 +719,23 @@ class Phi:
         vector : ndarray or list
         
         """
-        ranges = [
-            (p.first_index, p.last_index) for p in self._dict.values()
-            if not p.is_frozen()
-            ]
-        vector = self._array[self._get_mask(ranges)]
+        vector = self._array[self._vector_mask]
         if as_list:
             vector = vector.tolist()
-
         return vector
+
+# TODO: (next thing, before moving to layer subclasses): need to be able to
+#       set new values for _array (i.e. get vector mask, and overwrite values
+#       for that vector, after getting an updated vector from fitter for example)
+#       
+#       Also, potential fitting optimization: don't get mask every time, cache
+#       current vector mask and only update it when something changes. Doesn't
+#       matter for normal gets, but for fitting there will be many sets in a row
+#       with the same mask (could add up time).
+    def set_vector(self, vector):
+        """Set values of `Phi._array` sliced at `Phi._index` to a new vector."""
+        # TODO
+        self._array[self._vector_mask] = vector
 
     def _get_parameter_mask(self, p):
         """Get an index mask as in `Phi._get_mask`, but for one Parameter."""
@@ -703,6 +777,8 @@ class Phi:
     def freeze_parameters(self, *parameter_keys):
         """Use parameter values for evaluation only, do not optimize.
 
+        Updates `Phi._vector_mask`.
+
         Parameters
         ----------
         parameter_keys : N-tuple of str
@@ -725,9 +801,12 @@ class Phi:
                 pass
             else:
                 p.freeze()
+        self._update_vector_mask()
 
     def unfreeze_parameters(self, *parameter_keys):
         """Make parameter values optimizable.
+
+        Updates `Phi._vector_mask`.
 
         Parameters
         ----------
@@ -751,14 +830,7 @@ class Phi:
                 pass
             else:
                 p.unfreeze()
-
-    @staticmethod
-    def values_to_vector(values):
-        """Flatten a list of Parameter.values."""
-        vector = []
-        for v in values:
-            vector.extend(np.ravel(v))
-        return vector
+        self._update_vector_mask()
 
     def sample(self, inplace=False, as_vector=True):
         """Get or set new parameter values by sampling from priors.
@@ -782,8 +854,8 @@ class Phi:
         for p in self._dict.values():
             samples.append(p.sample(inplace=inplace))
         if as_vector:
-            samples = Phi.values_to_vector(samples)
-
+            unravelled = [np.ravel(s) for s in samples]
+            samples = np.concatenate(unravelled)
         return samples
 
     def mean(self, inplace=False, as_vector=True):
@@ -808,67 +880,75 @@ class Phi:
         for p in self._dict.values():
             means.append(p.mean(inplace=inplace))
         if as_vector:
-            means = Phi.values_to_vector(means)
-        
+            unravelled = [np.ravel(m) for m in means]
+            means = np.concatenate(unravelled)
         return means
 
 
-    def set_index(self, i, new_vector='resample'):
+    def set_index(self, i, new_index='initial'):
         """Change which vector to reference within `Phi._array`.
+
+        Updates `Phi._vector_mask`.
 
         Parameters
         ----------
         i : int
             New index for `Phi._array`. If `i >= len(Phi._array)`, then new
             vectors will be appended until `Phi._array` is sufficiently large.
-        new_vector : str or None, default='resample'
+        new_index : str or None, default='initial'.
             Determines how new vectors are generated if `i` is out of range.
-            If `'resample'`: invoke `Phi.sample(inplace=False)`.
-            Elif `'copy'`  : copy current `Phi.vector()`.
-            Elif `None`    : raise IndexError instead of adding new vectors.
+            If `'sample'`   : invoke `Phi.sample()`.
+            Elif `'mean'`   : invoke `Phi.mean()`.
+            Elif `'initial'`: set to `[p.initial_value for p in <Parameters>]`.
+            Elif `'copy'`   : copy current `Phi.get_vector()`.
+            Elif `None`     : raise IndexError instead of adding new vectors.
 
         """
         array_length = len(self._array)
         if i >= array_length:
             # Array isn't that big yet, so add new vector(s).
             new_indices = range(array_length, i+1)
-            match new_vector:
-                case 'resample':
+            match new_index:
+                case 'sample':
                     new_vectors = [self.sample() for j in new_indices]
+                case 'mean':
+                    new_vectors = [self.mean() for j in new_indices]
+                case 'initial':
+                    new_vectors = [
+                        np.concatenate([p.initial_value
+                                       for p in self._dict.values()])
+                        for j in new_indices
+                        ]
                 case 'copy':
-                    new_vectors = [self.vector() for j in new_indices]
+                    new_vectors = [self.get_vector() for j in new_indices]
                 case None:
                     # Don't add new vectors, raise an error instead. May be
                     # useful for testing.
                     raise IndexError(f'list index {i} out of range for Phi.')
-            self._array = np.concatenate([self._array] + new_vectors)
+            # Convert to 2-dim vectors and concatenate after existing vectors
+            new_rows = [v[np.newaxis, ...] for v in new_vectors]
+            self._array = np.concatenate([self._array] + new_rows)
+
         self._index = i
+        self._update_vector_mask()
 
     # Provide dict-like interface into Phi._dict
     def __getitem__(self, key):
         return self._dict[key]
     
     def get(self, key, default=None):
-        if key in self._dict:
-            val = self._dict[key]
-        else:
-            val = default
-        return val
+        return self._dict.get(key, default)
 
     def get_values(self, *keys):
         return [self._dict[k].values for k in keys]
 
     def update(self, dct):
+        """Update Parameter values (not the Parameters themselves)."""
         for k, v in dct.items():
-            if k in self._dict:
-                self._dict[k].update(v)
-            else:
-                self.add_parameter(
-                    Parameter(name=k, shape=v.shape)
-                    )
-                self._dict[k].update(v)
+            self._dict[k].update(v)   
 
     def __setitem__(self, key, val):
+        """Update Parameter value (not the Parameters itself)."""
         self._dict[key].update(val)
 
     def __iter__(self):
@@ -884,12 +964,15 @@ class Phi:
         return self._dict.values()
 
     def __repr__(self):
-        string = ""
+        header = f"Current index: {self._index}\n"
+        dash_break = "-"*(len(header)-1) + "\n"
+        string = dash_break + header + dash_break
         for i, p in enumerate(self._dict.values()):
             if i != 0:
                 # Add blank line between parameters if more than one
                 string += '\n\n'
             string += p.__repr__()
+        string += "\n" + dash_break
 
         return string
 
@@ -1022,11 +1105,11 @@ class Parameter:
                 "Accepted values are 'mean', 'sample', scalar, or ndarray."
                 )
 
-        self.initial_value = np.ravel(value).tolist()
+        self.initial_value = np.ravel(value)
 
         # Must be set by `Phi.add_parameter` for `Parameter.values` to work.
         self.phi = None  # Pointer to parent Phi instance.
-        self.first_index = None  # Location of data within Phi.vector()
+        self.first_index = None  # Location of data within Phi.get_vector()
         self.last_index = None
 
         self.is_frozen = False
