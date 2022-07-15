@@ -18,12 +18,12 @@ class WeightChannels(Layer):
         shape : 2-tuple
             First entry specifies the expected spectral dimension of the input,
             second entry is the spectral dimension of the output. Shape will be
-            used to initialize the `'coefficients'` Parameter if parameters=None.
+            used to initialize the `'coefficients'` Parameter
+            if parameters=None.
         parameters : Phi or None, optional
             Specifies the value of each variable used to compute
             `WeightChannels.evaluate()`. If `None`, values will be determined by
             `WeightChannels.initial_parameters`.
-            Expected format: Phi(Parameter(name='coefficients', shape=shape))
         
         Returns
         -------
@@ -37,13 +37,10 @@ class WeightChannels(Layer):
         coefficients = Parameter(name='coefficients', shape=self.shape)
         return Phi(coefficients)
 
-    @property
-    def coefficients(self):
-        return self.parameters['coefficients'].values
-
     def evaluate(self, *inputs):
         """TODO: docstring, and check ordering on matrix multiplication."""
-        y = [self.coefficients @ x for x in inputs]
+        coefficients = self.parameters['coefficients']
+        y = [x @ self.coefficients for x in inputs]
         return y
 
     @layer('wc')
@@ -72,7 +69,6 @@ class WeightChannels(Layer):
 
 
 class GaussianWeightChannels(WeightChannels):
-    # Same as V2, but uses the Phi & Parameter classes
 
     def __init__(**kwargs):
         """TODO: overwrite docstring for expected parameters but same init."""
@@ -84,10 +80,6 @@ class GaussianWeightChannels(WeightChannels):
         parameters = Phi(
             Parameter(name='mean', shape=shape, bounds=(0, 1)),
             Parameter(name='std', shape=shape, bounds=(0, None))
-            # NOTE: bounds aren't actually set up for Parameters yet, but this
-            #       is an example of why I think it would be an intuitive place
-            #       for them (can still pass through Modules, but they would
-            #       ultimately be implemented in the Parameter class).
             )
 
         return parameters

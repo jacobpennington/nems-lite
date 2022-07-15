@@ -1,3 +1,12 @@
+"""Base structures for representing data transformation steps of Models.
+
+Layer     : Top-level component. Implements an `evaluate` method, which carries
+            out the transformation.
+Phi       : Stores and manages fittable parameters for the transformation.
+Parameter : Low-level representation of individual parameters.
+
+"""
+
 import json
 
 import numpy as np
@@ -8,7 +17,7 @@ from nems.distributions import Normal
 
 # TODO: add examples and tests
 class Layer:
-    """Encapsulates one data-transformation step of a NEMS ModelSpec.
+    """Encapsulates one data-transformation step of a NEMS Model.
 
     Base class for NEMS Layers.
 
@@ -1166,26 +1175,27 @@ class Parameter:
         string += f"{self.values}"
         return string
 
-
-    # TODO: is there a straightforward way to mimic a numpy array here?
-    #       ex: would be nice to be able to use @ operator directly on a
-    #       coefficients parameter instead of parameter.values.
     def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
-        """Propagate numpy ufunc operations to `Parameter.values` (WIP)."""
-        raise NotImplementedError("Parameter.__array_ufunc__ doesn't work yet.")
+        """Propagate numpy ufunc operations to `Parameter.values`.
+        
+        Convenience method to eliminate excessive references to
+        `Parameter.values`.
+        
+        Notes
+        -----
+        Works with `@` but not `np.dot`.
+
+        See also
+        --------
+        https://numpy.org/doc/stable/reference/ufuncs.html
+        
+        """
         f = getattr(ufunc, method)
+        # replace Parameter objects with Parameter.values
         subbed_inputs = [
             x.values if isinstance(x, Parameter) else x
             for x in inputs
             ]
         output = f(*subbed_inputs, **kwargs)
 
-        if output is None:
-            raise NotImplementedError("ufunc cannot modify Parameter in-place.")
-        else:
-            if not isinstance(output, np.ndarray):
-                try:
-                    output = np.asarray(output)
-                    self.update(output)
-                except Exception as e:
-                    raise e("Something went wrong in Parameter.__array_ufunc__")
+        return output
