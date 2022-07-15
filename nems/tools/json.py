@@ -6,17 +6,21 @@ default encoding method will be used (`json.JSONEncoder.default`).
 
 Warnings
 --------
-Subclasses of NEMS base classes should avoid overwriting `.to_json` and
-`.from_json` whenever possible. NEMSEncoder will use the `.to_json` method of a
-subclass if overwritten, but NEMSDecoder will only ever use the `.from_json`
+Subclasses of NEMS base classes should avoid overwriting `to_json` and
+`from_json` whenever possible. NEMSEncoder will use the `to_json` method of a
+subclass if overwritten, but NEMSDecoder will only ever use the `from_json`
 method of the base class, which could cause confusion and/or mismatch between
 methods.
 
-If a subclass truly needs customized to/from methods, then corresponding
-`encode_{SubClassName}` and `decode_{SubClassName}` methods should also be added
-to NEMSEncoder and NEMSDecoder, respectively, so that the correct `.from_json`
-method can be found by the decoder. Alternatively, add the imported subclass
-to the top-level `_NEMS_classes_to_encode` variable.
+If a subclass truly needs customized to/from methods, there are two options:
+1) Corresponding `encode_{SubClassName}` and `decode_{SubClassName}` methods
+   should also be added to NEMSEncoder and NEMSDecoder, respectively, so that
+   the correct `from_json` method can be found by the decoder. Alternatively,
+   add the imported subclass to the top-level `_NEMS_classes_to_encode` variable.
+2) The base class `from_json` method should make use of a the subclass name
+   (either from the default '__nems_json_subtype__' key or a defined alias) to
+   re-direct `BaseClass.from_json(json)` to `SubClass.from_json(json)`.
+   See `nems.layers.base.Layer.from_json` for an example.
 
 Notes
 -----
@@ -32,7 +36,7 @@ to worry about encoding/decoding details: they just need to return/load from a
 dictionary that is suitable for standard `json.dumps`, i.e. it contains only
 strings, lists, ints, etc. Additionally, classes don't need to worry about
 encoding of other nems objects. I.e. a Phi instance contains a dict with
-Parameter instances; however, since both classes implement `.to_json`,
+Parameter instances; however, since both classes implement `to_json`,
 `json.dumps` will happily handle the details of encoding all Parameters before
 storing them in the encoded Phi instance.
 
@@ -86,6 +90,7 @@ class NEMSEncoder(json.JSONEncoder):
             if encoder is not None:
                 encoded = encoder(obj)
                 encoded["__nems_json_type__"] = cls.__name__
+                encoded["__nems_json_subtype__"] = type(obj.__name__)
                 return encoded
         else:
             super().default(obj)

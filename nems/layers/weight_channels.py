@@ -67,7 +67,7 @@ class WeightChannels(Layer):
 
     def to_json(self):
         data = Layer.to_json(self)
-        data.update(shape=self.shape)
+        data['kwargs'].update(shape=self.shape)
         return data
 
 

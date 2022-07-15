@@ -14,6 +14,13 @@ class Layer:
 
     """
 
+    # Any subclass of Layer will be registered here, for use by
+    # `Layer.from_json`
+    subclasses = {}
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        cls.subclasses[cls.__name__] = cls
+
     def __init__(self, input=None, output=None, parameters=None, priors=None,
                  bounds=None, name=None):
         """Encapsulates one data-transformation step of a NEMS ModelSpec.
@@ -464,49 +471,81 @@ class Layer:
         """Encode a Layer as a dictionary.
 
         This (base class) method encodes all attributes that are common to
-        all Layers. Subclasses that need to save additional attributes should
-        overwrite `to_json`, but invoke `Layer.to_json` within the new method.
+        all Layers. Subclasses that need to save additional kwargs or attributes
+        should overwrite `to_json`, but invoke `Layer.to_json` within the new
+        method as a starting point (see examples below).
         
         See also
         --------
+        'Layer.from_json`
         `nems.tools.json`
         `nems.layers.weight_channels.WeightChannels.to_json`
 
         Examples
         --------
         >>> class WeightChannels(Layer):
-        ...     ...
+        ...     # ...
         >>>     def to_json(self):
         ...         data = Layer.to_json(self)
-        ...         data.update(shape=self.shape)
+        ...         data['kwargs'].update(shape=self.shape)
+        ...         return data
+
+        >>> class DummyLayer(Layer):
+        >>>     def __init__(self, **kwargs):
+        ...         super().__init__(**kwargs)
+        ...         important_attr = None
+        >>>     def update_important_attr(self, *args):
+        ...         important_attr = do_stuff(args)
+        ...     # ...
+        ...     # Want to preserve the state of `important_attr` in encoding.
+        >>>     def to_json(self):
+        ...         data = Layer.to_json(self)
+        ...         data['attributes'].update(
+        ...             important_attr=self.important_attr
+        ...             )
         ...         return data
 
         """
         data = {
-            'input': self.input, 'output': self.output,
-            'parameters': self.parameters, 'priors': self.priors,
-            'bounds': self.bounds, 'name': self.name, 
+            'kwargs': {
+                'input': self.input, 'output': self.output,
+                'parameters': self.parameters, 'priors': self.priors,
+                'bounds': self.bounds, 'name': self.name, 
+            },
+            'attributes': {},
             'class_name': type(self).__name__
             }
         return data
-    # TODO: version that doesn't require subclassing?
-    #       only thing that comes to mind though is adding class attributes
-    #       like `json_args = ['shape']`, and that adds its own kind of
-    #       confusion. Might be best to stick with subclassing since it's
-    #       more flexible & explicit.
 
-
-    def from_json(json):
+    @classmethod
+    def from_json(cls, json):
         """Decode a Layer from a dictionary.
+
+        Parameters
+        ----------
+        json : dict
+            json data encoded by `Layer.to_json`.
+
+        Returns
+        -------
+        layer : Layer or subclass
         
         See also
         --------
+        `Layer.to_json`
         `nems.tools.json`.
 
         """
-        # TODO: Reverse of above, return Layer instance using dict for kwargs.
-        #       Some attributes may need to be set separately.
-        pass
+        subclass = cls.subclasses[json['class_name']]
+        if subclass.from_json.__qualname__ != Layer.from_json.__qualname__:
+            # Subclass has overwritten `from_json`, use that method instead.
+            layer = subclass.from_json()
+        else:
+            layer = Layer(**json['kwargs'])
+            for k, v in json['attributes'].items():
+                setattr(layer, k, v)
+
+        return layer
 
 
 # TODO: add examples and tests
@@ -869,7 +908,8 @@ class Phi:
         return phi
 
     def modified_copy(self, keys_to_keep, parameters_to_add):
-        # TODO: ref `keys_to_keep` to store Parameter objects,
+        """TODO."""
+        #       ref `keys_to_keep` to store Parameter objects,
         #       combine with parameters_to_add,
         #       build new phi,
         #       overwrite part of new array with copy of old array
