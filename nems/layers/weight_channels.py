@@ -65,6 +65,11 @@ class WeightChannels(Layer):
 
         return wc_class(**kwargs)
 
+    def to_json(self):
+        data = Layer.to_json(self)
+        data.update(shape=self.shape)
+        return data
+
 
 class GaussianWeightChannels(WeightChannels):
     # Same as V2, but uses the Phi & Parameter classes

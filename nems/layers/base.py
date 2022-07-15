@@ -15,7 +15,7 @@ class Layer:
     """
 
     def __init__(self, input=None, output=None, parameters=None, priors=None,
-                 bounds=None, default_bounds='infinite', name=None):
+                 bounds=None, name=None):
         """Encapsulates one data-transformation step of a NEMS ModelSpec.
 
         Layers are intended to exist as components of a parent Model by
@@ -55,11 +55,6 @@ class Layer:
             must correspond to names of parameters, such that each Parameter
             utilizes `Parameter(name, bounds=bounds[name])`.
             If None : use defaults defined in `Layer.initial_parameters`.
-        default_bounds : str, default='infinite'
-            Determines behavior when `bounds=None` for individual parameters.
-            If `'infinite'`  : set bounds to (-np.inf, np.inf)
-            If `'percentile'`: set bounds to tails of `Parameter.prior`.
-                (prior.percentile(0.0001), prior.percentile(0.9999))
         name : str or None; optional
             A name for the Layer so that it can be referenced through the
             parent Model, in addition to integer indexing.
@@ -258,50 +253,49 @@ class Layer:
         """
         return Phi()
 
-    def evaluate(self, *args):  
+    def evaluate(self, *args, **kwargs):  
         """Applies some mathematical operation to the argument(s).
         
-        Each Layer subclass is expected to redefine this method. Any number of
-        parameters is acceptable, but each should correspond to one name in
-        `self.input`. An arbitrary number of return values is also allowed, and
-        each should correspond to one name in `self.output`. Input and output
-        names will be associated with arguments and return values, respectively,
-        in list-order.
-
-        Parameters
-        ----------
-        *args : N-tuple of numpy.ndarray
-                Arbitrary number of arrays to which this method will be applied.
+        Each Layer subclass must overwrite this method. Any number of arguments
+        is acceptable, but each should correspond to one name in `self.input`
+        at runtime. An arbitrary number of return values is also allowed, and
+        each should correspond to one name in `self.output`.
+        
+        Input and output names will be associated with arguments and return
+        values, respectively, in list-order. If `self.input` is a dictionary,
+        inputs will instead be mapped to specific arguments (where each key is
+        an argument, and each value is a data array).
         
         Returns
         -------
         N-tuple of numpy.ndarray
 
+        See also
+        --------
+        Layer.__init__
+
         Examples
         --------
-        ```
-        def evaluate(self, x, y, z):
-            a = x + y
-            b = 2*z
 
-            return a, b
-        ```
-        For this example method, assume `self.input = ['one', 'two', 'three']`
-        and `self.output = ['two', 'new']` and we have a Recording with
-        `Recording.signals = {'one': x, 'two': y, 'three': z}`. After evaluation,
-        the result would be:
-            ```
-            *args = (x, y, z)
-            Layer.evaluate(*args) = (x+y, 2*z)
-            Recording.signals = {'one': x, 'two': x+y, 'three': z, 'new': 2*z}
-            ```
+        >>> class DummyLayer(Layer):
+        >>>     def evaluate(self, x, y, z):
+        ...         a = x + y
+        ...         b = 2*z
+        ...         return a, b
+        
+        >>> x = DummyLayer(input=['one', 'two', 'three'], output=['two', 'new'])
+        >>> data = {'one': x, 'two': y, 'three': z}
+        
+        During fitting, `x.evaluate` would receive `(x, y, z)` as arguments
+        (in that order) and return `(x+y, 2*z)`, resulting in:
+        >>> data
+        {'one': x, 'two': x+y, 'three': z, 'new': 2*z}
 
         """
-
         raise NotImplementedError(f'{self.__class__} has not defined evaluate.')
 
     def tensorflow_layer(self):
-        """Builds a `Tensorflow.keras.layers.Layer` equivalent to this Layer.
+        """Build an equivalent `Tensorflow.keras.layers.Layer` representation.
 
         TODO: How would this fit into the arbitrary input/output scheme that
               .evaluate() uses for scipy optimization? Maybe it can't, since
@@ -372,10 +366,39 @@ class Layer:
         """
         return self.parameters.mean(inplace=inplace, as_vector=as_vector)
 
-    def freeze_parameters(self):
-        # TODO: copy to something like fn_kwargs as before? could even automate
-        #       the dict updates somewhere to keep .evaluate() simple.
-        pass
+    def freeze_parameters(self, *parameter_keys):
+        """Use parameter values for evaluation only, do not optimize.
+
+        Parameters
+        ----------
+        parameter_keys : N-tuple of str
+            Each key must match the name of a Parameter in `Layer.parameters`.
+            If no keys are specified, all parameters will be frozen.
+        
+        See also
+        --------
+        Phi.freeze_parameters
+        Parameter.freeze
+        
+        """
+        self.parameters.freeze_parameters(*parameter_keys)
+
+    def unfreeze_parameters(self, *parameter_keys):
+        """Make parameter values optimizable.
+
+        Parameters
+        ----------
+        parameter_keys : N-tuple of str
+            Each key must match the name of a Parameter in `Layer.parameters`.
+            If no keys are specified, all parameters will be unfrozen.
+        
+        See also
+        --------
+        Phi.unfreeze_parameters
+        Parameter.unfreeze
+
+        """
+        self.parameters.unfreeze_parameters(*parameter_keys)
 
     # Passthrough dict-like interface for Layer.parameters
     # NOTE: 'get' operations through this interface return Parameter instances,
@@ -402,15 +425,27 @@ class Layer:
     def values(self):
         return self.parameters.values()
 
-    # TODO: make this more informative
     def __repr__(self):
-        return str(self.__class__)
+        layer_dict = Layer().__dict__
+        self_dict = self.__dict__
+        # Get attributes that are not part of base class
+        # e.g. shape for WeightChannels
+        # then convert to string with "k=v" format
+        self_only = ", ".join([f"{k}={v}" for k, v in self_dict.items()
+                               if k not in layer_dict])
 
-    # TODO: is this really needed?
+        string = f"{type(self).__name__}({self_only})\n"
+        dash_break = "-"*(len(string)-2) + "\n"
+        string += ".parameters:\n"
+        string += dash_break
+        string += self.parameters.__repr__() + "\n"
+        string += dash_break
+        return string
+
     def description(self):
-        """Optional short description of Layer's function.
+        """Short description of Layer's function.
         
-        Defaults to the docstring for self.evaluate if not overwritten.
+        Defaults to `Layer.evaluate.__doc__` if not overwritten.
 
         Example
         -------
@@ -422,37 +457,77 @@ class Layer:
             return '''Implements a simple exponential: $a + e^{(b-c)}$'''
 
         """
-
-        return help(self.evaluate)
+        return self.evaluate.__doc__
 
     # Add compatibility for saving to .json
     def to_json(self):
-        # TODO: package parameters, bounds, etc, into dict w/ same format as old
-        #       layer dicts. Won't be fully backwards compatible but should
-        #       make it easier to write an old -> new model conversion utility.
-        pass
+        """Encode a Layer as a dictionary.
+
+        This (base class) method encodes all attributes that are common to
+        all Layers. Subclasses that need to save additional attributes should
+        overwrite `to_json`, but invoke `Layer.to_json` within the new method.
+        
+        See also
+        --------
+        `nems.tools.json`
+        `nems.layers.weight_channels.WeightChannels.to_json`
+
+        Examples
+        --------
+        >>> class WeightChannels(Layer):
+        ...     ...
+        >>>     def to_json(self):
+        ...         data = Layer.to_json(self)
+        ...         data.update(shape=self.shape)
+        ...         return data
+
+        """
+        data = {
+            'input': self.input, 'output': self.output,
+            'parameters': self.parameters, 'priors': self.priors,
+            'bounds': self.bounds, 'name': self.name, 
+            'class_name': type(self).__name__
+            }
+        return data
+    # TODO: version that doesn't require subclassing?
+    #       only thing that comes to mind though is adding class attributes
+    #       like `json_args = ['shape']`, and that adds its own kind of
+    #       confusion. Might be best to stick with subclassing since it's
+    #       more flexible & explicit.
+
 
     def from_json(json):
+        """Decode a Layer from a dictionary.
+        
+        See also
+        --------
+        `nems.tools.json`.
+
+        """
         # TODO: Reverse of above, return Layer instance using dict for kwargs.
         #       Some attributes may need to be set separately.
         pass
 
 
-# TODO: method for removing parameter(s), e.g. when freezing
-#       probably return a new Phi with some dropped, make fn_kwargs or equivalent
-#       a separate Phi instance.
-
 # TODO: add examples and tests
 #       (for both Phi and Parameter)
+# TODO: TF compatibility functions? during fitting, values would have to exist
+#       as TF primitives, but need to be able to translate to/from
+#       TF and NEMS representations.
 class Phi:
-    """Stores and manages updates to parameters for one Layer."""
+    """Stores, and manages updates to, Parameters for one Layer."""
 
     def __init__(self, *parameters):
-        """Stores and manages updates to parameters for one Layer.
+        """Stores, and manages updates to, Parameters for one Layer.
 
         In general, Phi instances should not need to be interacted with directly
         unless implementing a new Layer subclass or a related function. Instead,
         parameters should be accessed through Model- or Layer-level methods.
+
+        Additionally, the set of Parameters assigned to a Phi object is meant
+        to be fixed at construction. To get a Phi object with some parameters
+        either added or removed, construct a new Phi instance or use
+        `Phi.modified_copy`.
 
         Parameters
         ----------
@@ -469,13 +544,85 @@ class Phi:
         self._index = 0
         self._dict = {}
         self.size = 0
+        # Add parameter values to nested list
         for p in parameters:
-            self.add_parameter(p)
+            self._add_parameter(p)
+        # Convert to ndarray
+        self._array = np.array(self._array)
 
-    @property
-    def _vector(self):
-        """Return a slice of `Phi._array` at `Phi._index`."""
-        return self._array[self._index]
+    def _add_parameter(self, parameter):
+        """Add a new parameter to `Phi._dict` and update `Phi._array`.
+        
+        Sets `parameter.phi`, `parameter.first_index`, and
+        `parameter.last_index` to comply with `Phi.vector()` formatting.
+        
+        This method should only be invoked during construction, since
+        `Phi._array` will be converted to a ndarray afterward.
+        
+        """
+        # Start at end of existing vector, track size for next parameter
+        parameter.first_index = self.size
+        self.size += parameter.size
+        parameter.last_index = self.size-1
+        # Always only one "row" during construction, so use 0 index.
+        self._array[0].extend(parameter.initial_value)
+        self._dict[parameter.name] = parameter
+        parameter.phi = self
+
+    def _get_mask(self, *index_ranges):
+        """Get index mask into current vector within `Phi._array`.
+
+        Parameters
+        ----------
+        index_ranges : N-tuple of 2-tuples
+            First tuple entry = first index, second tuple entry = last index.
+
+        Returns
+        -------
+        mask : boolean ndarray, shape=Phi._array.shape
+
+        Notes
+        -----
+        Using `mask` for selection will result in a copy of `Phi._array`.
+        Using `mask` for assignment will change values of `Phi._array` itself.
+        
+        """
+        mask = np.full(self._array.shape, False)
+        for first, last in index_ranges:
+            mask[self._index][first:last+1] = True
+        return mask
+
+    def vector(self, as_list=False):
+        """Get a copy of `Phi._array` sliced at `Phi._index`.
+        
+        Parameters
+        ----------
+        as_list : bool
+            If True, return `vector.tolist()` instead of `vector`.
+
+        Returns
+        -------
+        vector : ndarray or list
+        
+        """
+        ranges = [
+            (p.first_index, p.last_index) for p in self._dict.values()
+            if not p.is_frozen()
+            ]
+        vector = self._array[self._get_mask(ranges)]
+        if as_list:
+            vector = vector.tolist()
+
+        return vector
+
+    def _get_parameter_mask(self, p):
+        """Get an index mask as in `Phi._get_mask`, but for one Parameter."""
+        return self._get_mask((p.first_index, p.last_index))
+
+    def _get_parameter_vector(self, p):
+        """Get a sliced copy of `Phi._array` corresponding to one Parameter."""
+        mask = self._get_parameter_mask(p)
+        return self._array[mask]
 
     def bounds_vector(self, none_for_inf=True):
         """Return a list of bounds from each parameter in `Phi._dict`.
@@ -504,21 +651,58 @@ class Phi:
             bounds = subbed_bounds
         
         return bounds
-
-
-    def add_parameter(self, parameter):
-        """Add a new parameter to `Phi._dict` and update `Phi._array`.
         
-        Sets `parameter.phi`, `parameter.first_index`, and
-        `parameter.last_index` to comply with `Phi._vector` formatting.
+    def freeze_parameters(self, *parameter_keys):
+        """Use parameter values for evaluation only, do not optimize.
+
+        Parameters
+        ----------
+        parameter_keys : N-tuple of str
+            Each key must match the name of a Parameter in `Phi._dict`.
+            If no keys are specified, all parameters will be frozen.
+        
+        See also
+        --------
+        Layer.freeze_parameters
+        Parameter.freeze
         
         """
-        parameter.first_index = self.size
-        self.size += parameter.size
-        parameter.last_index = self.size-1
-        self._vector.extend(parameter.initial_value*parameter.size)
-        self._dict[parameter.name] = parameter
-        parameter.phi = self
+        if parameter_keys == ():
+            # no keys given, freeze all parameters
+            parameter_keys = list(self._dict.keys())
+        for pk in parameter_keys:
+            p = self._dict[pk]
+            if p.is_frozen:
+                # Already frozen, nothing to do
+                pass
+            else:
+                p.freeze()
+
+    def unfreeze_parameters(self, *parameter_keys):
+        """Make parameter values optimizable.
+
+        Parameters
+        ----------
+        parameter_keys : N-tuple of str
+            Each key must match the name of a Parameter in `Phi._dict`.
+            If no keys are specified, all parameters will be unfrozen.
+        
+        See also
+        --------
+        Layer.unfreeze_parameters
+        Parameter.unfreeze
+
+        """
+        if parameter_keys == ():
+            # no keys given, freeze all parameters
+            parameter_keys = list(self._dict.keys())
+        for pk in parameter_keys:
+            p = self._dict[pk]
+            if not p.is_frozen:
+                # Already unfrozen, nothing to do
+                pass
+            else:
+                p.unfreeze()
 
     @staticmethod
     def values_to_vector(values):
@@ -592,7 +776,7 @@ class Phi:
         new_vector : str or None, default='resample'
             Determines how new vectors are generated if `i` is out of range.
             If `'resample'`: invoke `Phi.sample(inplace=False)`.
-            Elif `'copy'`  : copy current `Phi._vector`.
+            Elif `'copy'`  : copy current `Phi.vector()`.
             Elif `None`    : raise IndexError instead of adding new vectors.
 
         """
@@ -604,15 +788,13 @@ class Phi:
                 case 'resample':
                     new_vectors = [self.sample() for j in new_indices]
                 case 'copy':
-                    new_vectors = [self._vector.copy() for j in new_indices]
+                    new_vectors = [self.vector() for j in new_indices]
                 case None:
                     # Don't add new vectors, raise an error instead. May be
                     # useful for testing.
                     raise IndexError(f'list index {i} out of range for Phi.')
-
-        self._array.extend(new_vectors)
+            self._array = np.concatenate([self._array] + new_vectors)
         self._index = i
-
 
     # Provide dict-like interface into Phi._dict
     def __getitem__(self, key):
@@ -667,15 +849,32 @@ class Phi:
     def to_json(self):
         """Encode Phi object as json. See `nems.tools.json`."""
         p = list(self._dict.values())
-        return {'_array': self._array, '_index': self._index, 'parameters': p}
+        frozen_parameters = [k for k, v in self._dict.items() if v.is_frozen]
+        data = {
+            'args': p,
+            'attributes': {
+                '_array': self._array,
+                '_index': self._index
+            },
+            'frozen_parameters': frozen_parameters
+        }
+        return data
 
     def from_json(json):
         """Decode Phi object from json. See `nems.tools.json`."""
-        phi = Phi(*json['parameters'])
-        phi._array = json['_array']
-        phi._index = json['_index']
-
+        phi = Phi(*json['args'])
+        for k, v in json['attributes'].items():
+            setattr(phi, k, v)
+        phi.freeze_parameters(json['frozen_parameters'])
         return phi
+
+    def modified_copy(self, keys_to_keep, parameters_to_add):
+        # TODO: ref `keys_to_keep` to store Parameter objects,
+        #       combine with parameters_to_add,
+        #       build new phi,
+        #       overwrite part of new array with copy of old array
+        #       copy old index
+        raise NotImplementedError
 
 
 class Parameter:
@@ -774,18 +973,34 @@ class Parameter:
                 "Accepted values are 'mean', 'sample', scalar, or ndarray."
                 )
 
-        sample = prior.sample(bounds=bounds)
-        self.initial_value = np.ravel(self.mean()).tolist()
+        self.initial_value = np.ravel(value).tolist()
 
         # Must be set by `Phi.add_parameter` for `Parameter.values` to work.
         self.phi = None  # Pointer to parent Phi instance.
-        self.first_index = None  # Location of data within Phi._vector
+        self.first_index = None  # Location of data within Phi.vector()
         self.last_index = None
+
+        self.is_frozen = False
+    
+    # TODO: any other tracking/upkeep that needs to happen with
+    #       freezing/unfreezing, or is the flag sufficient?
+    def freeze(self):
+        """Use parameter values for evaluation only, do not optimize."""
+        self.is_frozen = True
+
+    def unfreeze(self):
+        """Make parameter values optimizable."""
+        self.is_frozen = False
+
+    @property
+    def is_fittable(self):
+        """Alias property for negation of `Parameter.is_frozen`."""
+        return not self.is_frozen
 
     @property
     def values(self):
         """Get corresponding parameter values stored by parent Phi."""
-        values = self.phi._vector[self.first_index:self.last_index+1]
+        values = self.phi._get_parameter_vector(self)
         return np.reshape(values, self.shape)
 
     def sample(self, n=1, inplace=False):
@@ -820,7 +1035,7 @@ class Parameter:
         return sample
 
     def mean(self, inplace=False):
-        """Get, or set parameter values to, mean of priors.
+        """Get, or set parameter values to, mean of `Parameter.prior`.
         
         Note that `Parameter.mean()` may return a value outside of
         `Parameter.bounds`. In that event, either priors or bounds should be
@@ -845,7 +1060,7 @@ class Parameter:
         return mean
 
     def update(self, value, ignore_bounds=False):
-        """Set `Parameters.values` to `value` by updating `Phi._vector`.
+        """Set `Parameters.values` to `value` by updating `Phi._array`.
         
         Parameters
         ----------
@@ -875,30 +1090,41 @@ class Parameter:
             )
         else:
             flat_value = np.ravel(value)
-            self.phi._vector[self.first_index:self.last_index+1] = flat_value
+            mask = self.phi._get_parameter_mask(self)
+            self.phi._array[mask] = flat_value
 
-
-    def __repr__(self):
-        string = f"Parameter(name={self.name}, shape={self.shape})\n" \
-                 + ".values:\n" \
-                 + f"{self.values}"
-        return string
 
     # Add compatibility for saving to .json    
     def to_json(self):
         """Encode Parameter object as json. See `nems.tools.json`."""
         data = {
-            'name': self.name,
-            'shape': self.shape,
-            'prior': self.prior,
-            'bounds': self.bounds
+            'kwargs': {
+                'name': self.name,
+                'shape': self.shape,
+                'prior': self.prior,
+                'bounds': self.bounds
+            },
+            'attributes': {
+                'is_frozen': self.is_frozen
             }
-        # Encoder adds an extra key, so nest the dict to keep kwargs separate.
-        return {'data': data}
+        }
+        return data
 
     def from_json(json):
         """Decode Parameter object from json. See `nems.tools.json`."""
-        return Parameter(**json['data'])
+        p = Parameter(**json['kwargs'])
+        for k, v in json['attributes'].items():
+            setattr(p, k, v)
+        return p
+
+    def __repr__(self):
+        string = f"Parameter(name={self.name}, shape={self.shape})\n"
+        string += f".prior:     {self.prior}\n"
+        string += f".bounds:    {self.bounds}\n"
+        string += f".is_frozen: {self.is_frozen}\n"
+        string += ".values:\n"
+        string += f"{self.values}"
+        return string
 
 
     # TODO: is there a straightforward way to mimic a numpy array here?
