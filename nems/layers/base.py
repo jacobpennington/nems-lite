@@ -555,9 +555,9 @@ class Layer:
         self_only = ", ".join([f"{k}={v}" for k, v in self_dict.items()
                                if k not in layer_dict])
         header = f"{type(self).__name__}({self_only})\n"
-        equal_break = "="*len(header) + "\n"
-        string = equal_break + header
-        string += ".parameters:\n"
+        equal_break = "="*32 + "\n"
+        string = header + equal_break
+        string += ".parameters:\n\n\n"
         string += self.parameters.__repr__() + "\n"
         string += equal_break
         return string
@@ -1009,15 +1009,18 @@ class Phi:
         return self._dict.values()
 
     def __repr__(self):
-        header = f"Current index: {self._index}\n"
-        dash_break = "-"*(len(header)-1) + "\n"
-        string = dash_break + header + dash_break
+        footer = f"Index: {self._index}\n" + "-"*16
+        #dash_break = "-"*16
+        #string = dash_break + header + dash_break + "\n"
+        string = ""
         for i, p in enumerate(self._dict.values()):
             if i != 0:
                 # Add blank line between parameters if more than one
-                string += '\n\n'
+                string += '\n'
             string += p.__repr__()
-        string += "\n" + dash_break
+            string += footer
+        string += "\n"
+        #string += "\n" + dash_break
 
         return string
 
@@ -1300,12 +1303,15 @@ class Parameter:
         return p
 
     def __repr__(self):
+        dash_break = "-"*16 + "\n"
         string = f"Parameter(name={self.name}, shape={self.shape})\n"
+        string += dash_break
         string += f".prior:     {self.prior}\n"
         string += f".bounds:    {self.bounds}\n"
         string += f".is_frozen: {self.is_frozen}\n"
         string += ".values:\n"
-        string += f"{self.values}"
+        string += f"{self.values}\n"
+        string += dash_break
         return string
 
     def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):

@@ -34,8 +34,8 @@ model.add_module(DoubleExponential(name='dexp'))
 
 # Freeze the parameters of the linear portion of the model.
 # The values of these parameters will not be changed during fitting.
-model.freeze_parameters('wc', 'fir', 'lvl')
-# model.freeze_parameters(0, 1, 2)  # integer indexing would also work
+model.freeze_layers('wc', 'fir', 'lvl')
+# model.freeze_layers(0, 1, 2)  # integer indexing would also work
 # TODO: reasoning behind adding the `name` kwarg was that integer indexing
 #       can get confusing / hard to read when coming back to code later on.
 #       However, this adds another layer of string references that are separate
@@ -52,10 +52,10 @@ model.fit(recording=recording, stimulus_name='stimulus',
           reset_parameters=False)
 
 # Unfreeze the linear portion.
-model.unfreeze_parameters('wc', 'fir', 'lvl')
+model.unfreeze_layers('wc', 'fir', 'lvl')
 # In this case, this is equivalent to unfreezing all modules, which we can
 # do by *not* specifying any names or indices:
-# model.unfreeze_parameters()
+# model.unfreeze_layers()
 
 # Now perform a final fit of all modules simultaneously, using a finer
 # optimization tolerance.
@@ -69,7 +69,8 @@ model.fit(recording=recording, stimulus_name='stimulus',
 #       parameters but not others, we could use the module-level method.
 #       For example:
 # Just freeze DoubleExponential's kappa parameter:
-model.modules('dexp').freeze_parameters('kappa')
+model.layers['dexp'].freeze_parameters('kappa')
+# model.get_layer('dexp').freeze_parameters('kappa')  # also works
 
 
 # TODO: This script made me realize it gets unnecessarily cumbersome to specify

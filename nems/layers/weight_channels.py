@@ -37,9 +37,13 @@ class WeightChannels(Layer):
         coefficients = Parameter(name='coefficients', shape=self.shape)
         return Phi(coefficients)
 
+    @property
+    def coefficients(self):
+        """Subclasses overwrite this, so `evaluate` doesn't need to change."""
+        return self.parameters['coefficients']
+
     def evaluate(self, *inputs):
         """TODO: docstring, and check ordering on matrix multiplication."""
-        coefficients = self.parameters['coefficients']
         y = [x @ self.coefficients for x in inputs]
         return y
 

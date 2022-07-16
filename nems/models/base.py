@@ -1,3 +1,5 @@
+from operator import itemgetter
+
 import numpy as np
 
 
@@ -162,17 +164,28 @@ class Model:
         for layer in self._layers.values():
             layer.set_index(index, new_index=new_index)
 
-    def freeze_parameters(self, *layer_keys):
-        """Invoke `Layer.freeze_parameters` for each keyed layer.
+    def freeze_layers(self, *layer_keys):
+        """Invoke `Layer.freeze_parameters()` for each keyed layer.
         
         See also
         --------
         nems.layers.base.Layer.freeze_parameters
-            (The layer-level method)
 
         """
-        for key in layer_keys:
-            self.layers[key].freeze_parameters()
+        for layer in self.layers.get(*layer_keys):
+            layer.freeze_parameters()
+
+    def unfreeze_layers(self, *layer_keys):
+        """Invoke `Layer.unfreeze_parameters()` for each keyed layer.
+        
+        See also
+        --------
+        nems.layers.base.Layer.unfreeze_parameters
+
+        """
+        for layer in self.layers.get(*layer_keys):
+            layer.unfreeze_parameters()
+
 
     def predict(self, input):
         # TODO: I guess this would really just be a wrapper for evaluate?
@@ -182,6 +195,27 @@ class Model:
         # TODO: this should point to an independent utility function, but
         #       placed here for convenience (and also to provide model defaults).
         pass
+
+    def __repr__(self):
+        # Get important args/kwargs and string-format as call to constructor.
+        # (also attrs, TODO)
+        args = []    # TODO  --  what should be here?
+        kwargs = {}  # TODO  --  what should be here?
+        args_string = ", ".join([f"{a}" for a in args])
+        kwargs_string = ", ".join([f"{k}={v}" for k, v in kwargs.items()])
+        header = f"{type(self).__name__}({args_string}{kwargs_string})\n"
+        tilde_break = "~"*64 + "\n"
+        string = header
+        string += tilde_break
+        string += ".layers:\n\n\n\n"
+        for i, layer in enumerate(self.layers):
+            if i != 0:
+                # Add blank line between layers if more than one
+                string += '\n\n\n'
+            string += layer.__repr__()
+        string += "\n" + tilde_break
+
+        return string
 
     # Add compatibility for saving to json
     def to_json(self):
@@ -196,10 +230,27 @@ class Model:
 
 
 class _LayerDict:
-    """Simple wrapper for Layer._layers to enable int- or string-indexed gets.
-    
+    """Wrapper for Layer._layers to enable fancy-indexed gets.
+
+    Supports: integer and string indexing, multi-indexing (one type at a time).
     Note that index assignment is not supported. To change a Model's Layers,
     use `Model.add_layers`, `Model.remove_layers`, etc.
+
+    Examples
+    --------
+    >>> layers = _LayerDict({'one': 1, 'two': 2, 'three': 3})
+    >>> layers
+    {'one': 1, 'two': 2, 'three': 3}
+    >>> layers[0]
+    1
+    >>> layers['one']
+    1
+    >>> layers['one', 'three']
+    1, 3
+    >>> layers['one', 0]
+    KeyError: 0
+    >>> layers['two'] = 22
+    TypeError: '_LayerDict' object does not support item assignment
 
     """
     def __init__(self, _dict):
@@ -214,13 +265,44 @@ class _LayerDict:
             container = self._dict
         return container
 
-    def __getitem__(self, key):
-        return self._container_for(key)[key]
+    def __getitem__(self, keys):
+        # TODO: is this worth it vs a for loop? test timing
+        if not isinstance(keys, tuple):
+            # only one argument, wrap it
+            keys = [keys]
+        layers = itemgetter(*keys)(self._container_for(keys[0]))
+        return layers
 
-    def get(self, key, default=None):
-        container = self._container_for(key)
-        try:
-            layer = container[key]
-        except IndexError:
-            layer = default
-        return layer
+    def get(self, *keys, default=None):
+        # no keys, get all layers
+        if keys == ():
+            layers = self._values
+        else:
+            container = self._container_for(keys[0])
+            layers = []
+            for key in keys:
+                try:
+                    layer = container[key]
+                except (IndexError, KeyError):
+                    layer = default
+                layers.append(layer)
+        
+        # Tuple wrapper just for output consistency with __getitem__,
+        # not really necessary.
+        return tuple(layers)
+
+    def __iter__(self):
+        """Iterate over Layers (not keys)."""
+        return iter(self._values)
+
+    def keys(self):
+        return self._dict.keys()
+
+    def items(self):
+        return self._dict.items()
+
+    def values(self):
+        return self._values
+
+    def __repr__(self):
+        return self._dict.__repr__()
