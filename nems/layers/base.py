@@ -352,8 +352,53 @@ class Layer:
         self.parameters.update(parameter_dict)
 
     def get_parameter_values(self, *parameter_keys):
-        """Return all parameter values formatted as a list of arrays."""
+        """Get all parameter values, formatted as a list of arrays.
+        
+        See also
+        --------
+        Phi.get_values
+        
+        """
         return self.parameters.get_values(*parameter_keys)
+
+    def get_parameter_vector(self, as_list=True):
+        """Get all parameter values, formatted as a single vector.
+        
+        Parameters
+        ----------
+        as_list : bool
+            If True, returns a list instead of ndarray.
+
+        Returns
+        -------
+        list or ndarray
+
+        See also
+        --------
+        Phi.get_vector
+
+        """
+        return self.parameters.get_vector(as_list=as_list)
+
+    def get_bounds_vector(self, none_for_inf=True):
+        """Get all parameter bounds, formatted as a list of 2-tuples.
+
+        Parameters
+        ----------
+        none_for_inf : bool
+            If True, +/- np.inf is replaced with None
+            (for scipy-compatible bounds).
+
+        Returns
+        -------
+        list of 2-tuple
+
+        See also
+        --------
+        Phi.get_bounds
+
+        """
+        return self.parameters.get_bounds(none_for_inf=none_for_inf)
 
     def sample_from_priors(self, inplace=True, as_vector=False):
         """Get or set new parameter values by sampling from priors.
@@ -368,8 +413,8 @@ class Layer:
             If True, return sampled values as a flattened list instead of a
             list of arrays.
 
-        Return
-        ------
+        Returns
+        -------
         samples
 
         See also
@@ -392,8 +437,8 @@ class Layer:
             If True, return means as a flattened list instead of a
             list of arrays.
 
-        Return
-        ------
+        Returns
+        -------
         means : list
 
         See also
@@ -599,11 +644,17 @@ class Layer:
         return layer
 
 
+
+###############################################################################
+#####                             Phi                                     #####
+###############################################################################
+
 # TODO: add examples and tests
 #       (for both Phi and Parameter)
 # TODO: TF compatibility functions? during fitting, values would have to exist
 #       as TF primitives, but need to be able to translate to/from
 #       TF and NEMS representations.
+
 class Phi:
     """Stores, and manages updates to, Parameters for one Layer."""
 
@@ -724,17 +775,11 @@ class Phi:
             vector = vector.tolist()
         return vector
 
-# TODO: (next thing, before moving to layer subclasses): need to be able to
-#       set new values for _array (i.e. get vector mask, and overwrite values
-#       for that vector, after getting an updated vector from fitter for example)
-#       
-#       Also, potential fitting optimization: don't get mask every time, cache
-#       current vector mask and only update it when something changes. Doesn't
-#       matter for normal gets, but for fitting there will be many sets in a row
-#       with the same mask (could add up time).
     def set_vector(self, vector):
         """Set values of `Phi._array` sliced at `Phi._index` to a new vector."""
-        # TODO
+        # TODO: add checks for shape/size/dtype/etc?
+        #       or are numpy errors sufficiently informative here?
+        #       (should mostly only be used by fitter anyway)
         self._array[self._vector_mask] = vector
 
     def _get_parameter_mask(self, p):
@@ -746,7 +791,7 @@ class Phi:
         mask = self._get_parameter_mask(p)
         return self._array[mask]
 
-    def bounds_vector(self, none_for_inf=True):
+    def get_bounds(self, none_for_inf=True):
         """Return a list of bounds from each parameter in `Phi._dict`.
         
         Parameters
@@ -1008,6 +1053,11 @@ class Phi:
         #       copy old index
         raise NotImplementedError
 
+
+
+###############################################################################
+#####                           Parameter                                 #####
+###############################################################################
 
 class Parameter:
     """Stores and manages updates to values for one parameter of one Layer."""

@@ -1,3 +1,6 @@
+import numpy as np
+
+
 class Model:
     default_input = 'stimulus'
     default_output = 'prediction'
@@ -70,12 +73,65 @@ class Model:
         pass
 
     def get_parameter_vector(self, as_list=True):
-        # TODO: for scipy fitter
-        pass
+        """Get all parameter values, formatted as a single vector.
+        
+        Parameters
+        ----------
+        as_list : bool
+            If True, returns a list instead of ndarray
+            (for scipy compatibility)
 
-    def get_bounds_vector(self):
-        # TODO: for scipy fitter
-        pass
+        Returns
+        -------
+        model_vector : list or ndarray
+
+        See also
+        --------
+        nems.layers.base.Layer.get_parameter_vector
+
+        """
+        # collect all layer vectors
+        vectors = []
+        for layer in self.layers:
+            vector = layer.get_parameter_vector(as_list=as_list)
+            vectors.append(vector)
+        # flatten list
+        if as_list:
+            model_vector = [v for vector in vectors for v in vector]
+        else:
+            model_vector = np.concatenate(vectors)
+        
+        return model_vector
+        
+
+    def get_bounds_vector(self, none_for_inf=True):
+        """Get all parameter bounds, formatted as a list of 2-tuples.
+
+        Parameters
+        ----------
+        none_for_inf : bool
+            If True, +/- np.inf is replaced with None
+            (for scipy-compatible bounds).
+
+        Returns
+        -------
+        model_bounds : list of 2-tuple
+
+        See also
+        --------
+        nems.layers.base.Layer.get_bounds_vector
+
+        """
+        # collect all bounds
+        boundses = []
+        for layer in self.layers:
+            bounds = layer.get_bounds_vector(none_for_inf=none_for_inf)
+            boundses.append(bounds)
+        # flatten list
+        model_bounds = [t for bounds in boundses for t in bounds]
+
+        return model_bounds
+
 
     def set_index(self, index, new_index='initial'):
         """Change which set of parameter values is referenced.
