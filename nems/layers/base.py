@@ -41,10 +41,10 @@ class Layer:
         ----------
         input : str, list, dict, or None; optional
             Specifies which data streams should be provided as inputs by
-            parent Model during fitting, where strings refer to keys for a
+            parent Model during evaluation, where strings refer to keys for a
             dict of arrays provided to `Model.fit`.
             If None : output of previous Layer.
-            If str  : a single input array.
+            If str  : a single input array (will convert to singleton list).
             If list : many input arrays.
             If dict : many input arrays, with keys specifying which parameter
                       of `Layer.evaluate` each array is associated with.
@@ -134,10 +134,7 @@ class Layer:
             self.input = [input]
         else:
             self.input = input
-        if isinstance(output, str):
-            self.output = [output]
-        else:
-            self.output = output
+        self.output = output
 
         self.name = name if name is not None else 'unnamed module'
         self.bounds = bounds
@@ -281,6 +278,14 @@ class Layer:
         values, respectively, in list-order. If `self.input` is a dictionary,
         inputs will instead be mapped to specific arguments (where each key is
         an argument, and each value is a data array).
+
+        Warnings
+        --------
+        Evaluate should never modify inputs in-place, as this could change the
+        input to other Layers that expect the original data. Intermediate
+        operations should always return copies. If a modified copy of the input
+        is needed as standalone data, then the evaluate method of a separate
+        layer should produce that output instead.
         
         Returns
         -------
@@ -379,6 +384,25 @@ class Layer:
 
         """
         return self.parameters.get_vector(as_list=as_list)
+
+    def set_parameter_vector(self, vector, ignore_checks=False):
+        """Set parameter values with a single vector.
+
+        Parameters
+        ----------
+        vector : ndarray or list
+            New parameter vector. Size must match the total number of flattened
+            parameter values.
+        ignore_checks : bool
+            If True, set new values without checking size or bounds.
+            (intended as a minor optimization for the scipy fitter).
+
+        See also
+        --------
+        Phi.set_vector
+        
+        """
+        self.parameters.set_vector(vector, ignore_checks=ignore_checks)
 
     def get_bounds_vector(self, none_for_inf=True):
         """Get all parameter bounds, formatted as a list of 2-tuples.
@@ -775,22 +799,6 @@ class Phi:
             vector = vector.tolist()
         return vector
 
-    def set_vector(self, vector):
-        """Set values of `Phi._array` sliced at `Phi._index` to a new vector."""
-        # TODO: add checks for shape/size/dtype/etc?
-        #       or are numpy errors sufficiently informative here?
-        #       (should mostly only be used by fitter anyway)
-        self._array[self._vector_mask] = vector
-
-    def _get_parameter_mask(self, p):
-        """Get an index mask as in `Phi._get_mask`, but for one Parameter."""
-        return self._get_mask((p.first_index, p.last_index))
-
-    def _get_parameter_vector(self, p):
-        """Get a sliced copy of `Phi._array` corresponding to one Parameter."""
-        mask = self._get_parameter_mask(p)
-        return self._array[mask]
-
     def get_bounds(self, none_for_inf=True):
         """Return a list of bounds from each parameter in `Phi._dict`.
         
@@ -818,6 +826,62 @@ class Phi:
             bounds = subbed_bounds
         
         return bounds
+
+    def within_bounds(self, vector):
+        """False if anywhere `vector < bounds[0]` or `vector > bounds[1]`."""
+        passed = True
+        bounds = self.get_bounds(none_for_inf=False)
+        lower = np.array([b[0] for b in bounds])
+        upper = np.array([b[1] for b in bounds])
+        if np.any(vector < lower) or np.any(vector > upper):
+            passed = False
+        return passed
+
+    def get_indices_outof_range(self, vector, as_bool=True):
+        """Get indices where `vector < bounds[0]` or `vector > bounds[1]`."""
+        bounds = self.get_bounds(none_for_inf=False)
+        lower = np.array([b[0] for b in bounds])
+        upper = np.array([b[1] for b in bounds])
+
+        if as_bool:
+            indices = np.logical_or(vector < lower, vector > upper)
+        else:
+            check_low = np.argwhere(vector < lower)
+            check_high = np.argwhere(vector > upper)
+            indices = np.vstack([check_low, check_high]).flatten()
+        
+        return indices
+
+    def set_vector(self, vector, ignore_checks=False):
+        """Set values of `Phi._array` sliced at `Phi._index` to a new vector.
+
+        Parameters
+        ----------
+        vector : ndarray or list
+            New parameter values. Size must match `Phi.get_vector`.
+        ignore_checks : bool
+            If True, set new values without checking size or bounds.
+            (intended as a minor optimization for the scipy fitter).
+        
+        """
+        if not ignore_checks:
+            if np.array(vector).size != self._vector_mask.size:
+                raise ValueError(f"Size of new vector != Phi.get_vector.")
+            if not self.within_bounds(vector):
+                bad_indices = self.get_indices_outof_range(vector, as_bool=False)
+                raise ValueError("Vector out of bounds at indices:\n"
+                                 f"{bad_indices}.")
+
+        self._array[self._vector_mask] = vector
+
+    def _get_parameter_mask(self, p):
+        """Get an index mask as in `Phi._get_mask`, but for one Parameter."""
+        return self._get_mask((p.first_index, p.last_index))
+
+    def _get_parameter_vector(self, p):
+        """Get a sliced copy of `Phi._array` corresponding to one Parameter."""
+        mask = self._get_parameter_mask(p)
+        return self._array[mask]
         
     def freeze_parameters(self, *parameter_keys):
         """Use parameter values for evaluation only, do not optimize.
@@ -1009,18 +1073,15 @@ class Phi:
         return self._dict.values()
 
     def __repr__(self):
-        footer = f"Index: {self._index}\n" + "-"*16
-        #dash_break = "-"*16
-        #string = dash_break + header + dash_break + "\n"
+        footer = f"Index: {self._index}\n" + "-"*16 + "\n"
         string = ""
         for i, p in enumerate(self._dict.values()):
             if i != 0:
                 # Add blank line between parameters if more than one
-                string += '\n'
+                string += "\n"
             string += p.__repr__()
             string += footer
         string += "\n"
-        #string += "\n" + dash_break
 
         return string
 
@@ -1047,6 +1108,39 @@ class Phi:
         phi.freeze_parameters(json['frozen_parameters'])
         return phi
 
+    def from_dict(dct, default_bounds='infinite'):
+        """Construct Phi from a specially formatted dictionary.
+        
+        Parameters
+        ----------
+        dct : dict
+            Must contain three nested dictionaries at keys 'values', 'prior',
+            and 'bounds'. Each dictionary must have the same keys, which will
+            be the parameter names. Values within each dictionary will be used
+            as arguments for `initial_value`, `prior`, and `bounds`,
+            respectively.
+        default_bounds : string, default='infinite'
+            Determines behavior when `bounds=None`.
+            If `'infinite'`  : set bounds to (-np.inf, np.inf)
+            If `'percentile'`: set bounds to tails of `Parameter.prior`.
+                (prior.percentile(0.0001), prior.percentile(0.9999))
+
+        See also
+        --------
+        Parameter.__init__
+        
+        """
+        parameters = []
+        for name, value in dct['values'].items():
+            value = np.array(value)
+            prior = dct['prior'][name]
+            bounds = dct['bounds'][name]
+            p = Parameter(name, shape=value.shape, prior=prior, bounds=bounds,
+                          default_bounds=default_bounds, initial_value=value)
+            parameters.append(p)
+        phi = Phi(*parameters)
+        return phi
+
     def modified_copy(self, keys_to_keep, parameters_to_add):
         """TODO."""
         #       ref `keys_to_keep` to store Parameter objects,
@@ -1055,7 +1149,6 @@ class Phi:
         #       overwrite part of new array with copy of old array
         #       copy old index
         raise NotImplementedError
-
 
 
 ###############################################################################
@@ -1142,9 +1235,9 @@ class Parameter:
                     )
         self.bounds = bounds
 
-        if initial_value == 'mean':
+        if isinstance(initial_value, str) and (initial_value == 'mean'):
             value = self.prior.mean()
-        elif initial_value == 'sample':
+        elif isinstance(initial_value, str) and (initial_value) == 'sample':
             value = self.prior.sample(bounds=self.bounds)
         elif np.isscalar(initial_value):
             value = np.full(self.shape, initial_value)

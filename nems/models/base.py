@@ -50,16 +50,126 @@ class Model:
         """TODO: add layer at specific integer index."""
         raise NotImplementedError
 
-    def evaluate(self, input):
-        # TODO: need to check for None input/output and specify 
-        #       the default behavior in those cases.
-        # inputs = [Recording[name].values for name in Layer.inputs]
-        # outputs = Layer.evaluate(inputs)
-        # Recording.update(
-        #     {name: array_to_signal(array)
-        #      for name, array in zip(Layer.output, outputs)}
-        # )
-        pass
+    # TODO: come up with a different way to handle input/output mapping?
+    #       all the isinstance() checks make this a lot more complicated
+    #       than it really needs to be. But requiring everyone to specify a
+    #       dict isn't a very friendly API, since that requires looking at the
+    #       Layer.evaluate implementation (& other formats lose flexibility).
+    def evaluate(self, input, input_name=None, output_name=None,
+                 return_full_data=True):
+        """Transform input(s) by invoking `Layer.evaluate` for each Layer.
+
+        TODO
+
+        Parameters
+        ----------
+        input : ndarray or dict
+        input_name : str, list, dict, or None; optional
+            Specifies which data streams should be provided as inputs to the
+            first layer, where strings refer to keys in `input` (if dict). Note
+            that priority will be given to `Layer.input` in case of a clash.
+            I.e. if `input_name is not None`, but also `Layer.input is not None`
+            for the first layer, `Layer.input` will be used.
+            If None : use `Layer.input` of first layer if specified,
+                      otherwise `Model.default_input`.
+            If str  : a single input array at key `input_name`.
+            If list : many input arrays with keys listed in `input_name`.
+            If dict : many input arrays, with keys specifying which parameter
+                      of `Layer.evaluate` each array is associated with.
+            (see `nems.layers.base.Layer` for examples)
+        output_name : str, list, or None; optional
+            Specifies name(s) for array output(s) of layers for which
+            `Layer.output is None`.
+            If None : use `Model.default_output`.
+            If str  : same name for every output (incremented if multiple).
+            If list : one name per output (length must match).
+        return_full_data : bool; default=True
+            If True, return a dictionary containing all input data and all
+            uniquely-keyed Layer outputs.
+
+        Returns
+        -------
+        data : ndarray, list, or dict
+            Format depends on `return_full_data` and the `evaluate` method of
+            the final layer in the model.
+        
+        """
+
+        if input_name is None:
+            input_name = Model.default_input
+        if output_name is None:
+            output_name = Model.default_output
+        data = {}
+
+        # Loop through transformations
+        next_input = None
+        for layer in self.layers:
+            if (next_input is None) and (layer.input is None):
+                # First iteration, first layer didn't specify input.
+                if isinstance(input, np.ndarray):
+                    # Single array input, leave next_input as None
+                    # but specify first "data_out"
+                    data_out = [input]
+                else:
+                    # Refer to input_name to find data (or model default).
+                    next_input = input_name
+            else:
+                # Use Layer.input to find data
+                next_input = layer.input
+
+            if next_input is None:
+                # Use previous output
+                data_in = data_out
+                data_out = layer.evaluate(*data_in)
+            elif isinstance(next_input, list):
+                # Get data from all keys, in list order
+                data_in = [input[k] for k in next_input]
+                data_out = layer.evaluate(*data_in)
+            elif isinstance(next_input, dict):
+                # Map evaluate arguments to specific data keys
+                data_in = {k: input[v] for k, v in next_input.items()}
+                data_out = layer.evaluate(**data_in)
+            else:
+                # message TODO
+                raise TypeError
+
+            # Cast output as list if only one array, for fewer checks
+            if not isinstance(data_out, (list, tuple)):
+                data_out = [data_out]
+
+            if layer.output is None:
+                # Refer to output name for correct key(s) to save.
+                # TODO: Maybe a better default is to just not save if
+                #       output is None, unless it's the final layer?
+                #       Otherwise, a lot of intermediate defaults could stack
+                #       up that aren't overwritten by subsequent layers with
+                #       different numbers of outputs.
+                next_output = output_name
+            else:
+                # Check layer.output for key(s).
+                next_output = layer.output
+            if isinstance(next_output, str):
+                output_keys = [
+                    f"{next_output}.{i}" if i != 0 else f"{next_output}"
+                    for i in range(len(next_output))
+                    ]
+            elif isinstance(next_output, list):
+                output_keys = next_output
+            else:
+                # message TODO
+                raise TypeError
+            
+            for k, v in zip(output_keys, data_out):
+                data[k] = v
+
+        if not return_full_data:
+            data = data_out
+        return data
+
+    def predict(self, input, return_full_data=False, **eval_kwargs):
+        """As `Model.evaluate`, but return only the last output by default."""
+        return self.evaluate(input, return_full_data=return_full_data,
+                             **eval_kwargs)
 
     def fit(self):
         # TODO: see `scripts/simple_fit.py` for ideas on how to format this.
@@ -73,6 +183,39 @@ class Model:
         #       calls to this method as building blocks
         #       (see `scripts/freeze_parameters.py`)
         pass
+
+    def score(self, prediction, target):
+        # TODO: this should point to an independent utility function, but
+        #       placed here for convenience (and also to provide model defaults).
+        pass
+
+    def get_bounds_vector(self, none_for_inf=True):
+        """Get all parameter bounds, formatted as a list of 2-tuples.
+
+        Parameters
+        ----------
+        none_for_inf : bool
+            If True, +/- np.inf is replaced with None
+            (for scipy-compatible bounds).
+
+        Returns
+        -------
+        model_bounds : list of 2-tuple
+
+        See also
+        --------
+        nems.layers.base.Layer.get_bounds_vector
+
+        """
+        # collect all bounds
+        boundses = []
+        for layer in self.layers:
+            bounds = layer.get_bounds_vector(none_for_inf=none_for_inf)
+            boundses.append(bounds)
+        # flatten list
+        model_bounds = [t for bounds in boundses for t in bounds]
+
+        return model_bounds
 
     def get_parameter_vector(self, as_list=True):
         """Get all parameter values, formatted as a single vector.
@@ -104,36 +247,26 @@ class Model:
             model_vector = np.concatenate(vectors)
         
         return model_vector
-        
 
-    def get_bounds_vector(self, none_for_inf=True):
-        """Get all parameter bounds, formatted as a list of 2-tuples.
+    def set_parameter_vector(self, vector, ignore_checks=False):
+        """Set all parameter values with a single vector.
 
         Parameters
         ----------
-        none_for_inf : bool
-            If True, +/- np.inf is replaced with None
-            (for scipy-compatible bounds).
-
-        Returns
-        -------
-        model_bounds : list of 2-tuple
+        vector : ndarray or list
+            New parameter vector. Size must match the total number of flattened
+            parameter values.
+        ignore_checks : bool
+            If True, set new values without checking size or bounds.
+            (intended as a minor optimization for the scipy fitter).
 
         See also
         --------
-        nems.layers.base.Layer.get_bounds_vector
-
+        nems.layers.base.Layer.set_parameter_vector
+        
         """
-        # collect all bounds
-        boundses = []
         for layer in self.layers:
-            bounds = layer.get_bounds_vector(none_for_inf=none_for_inf)
-            boundses.append(bounds)
-        # flatten list
-        model_bounds = [t for bounds in boundses for t in bounds]
-
-        return model_bounds
-
+            layer.set_parameter_vector(vector, ignore_checks=ignore_checks)
 
     def set_index(self, index, new_index='initial'):
         """Change which set of parameter values is referenced.
@@ -161,7 +294,7 @@ class Model:
         nems.layers.base.Layer.set_index
 
         """
-        for layer in self._layers.values():
+        for layer in self.layers:
             layer.set_index(index, new_index=new_index)
 
     def freeze_layers(self, *layer_keys):
@@ -186,16 +319,6 @@ class Model:
         for layer in self.layers.get(*layer_keys):
             layer.unfreeze_parameters()
 
-
-    def predict(self, input):
-        # TODO: I guess this would really just be a wrapper for evaluate?
-        pass
-
-    def score(self, prediction, target):
-        # TODO: this should point to an independent utility function, but
-        #       placed here for convenience (and also to provide model defaults).
-        pass
-
     def __repr__(self):
         # Get important args/kwargs and string-format as call to constructor.
         # (also attrs, TODO)
@@ -203,10 +326,21 @@ class Model:
         kwargs = {}  # TODO  --  what should be here?
         args_string = ", ".join([f"{a}" for a in args])
         kwargs_string = ", ".join([f"{k}={v}" for k, v in kwargs.items()])
+        attr_string = ""
+        for attr in ['input', 'output', 'target', 'state', 'backend']:
+            default = f'default_{attr}'
+            self_attr = getattr(self, default)
+            base_attr = getattr(Model, default)
+            if self_attr != base_attr:
+                # 7 max length, add spaces to keep values aligned
+                space_gap = " "*(7-len(attr))  
+                attr_string += f".{default}:  " + space_gap + f"{self_attr}\n"
         header = f"{type(self).__name__}({args_string}{kwargs_string})\n"
         tilde_break = "~"*64 + "\n"
+
         string = header
         string += tilde_break
+        string += attr_string
         string += ".layers:\n\n\n\n"
         for i, layer in enumerate(self.layers):
             if i != 0:
