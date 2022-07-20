@@ -4,7 +4,11 @@ from functools import partial
 import numpy as np
 import scipy.optimize
 
-from nems.metrics import get_cost_function
+from nems.registry import keyword_lib
+from nems.metrics import get_metric
+# temporarily import layers to make sure they're registered in keyword_lib
+import nems.layers  
+del nems.layers
 
 
 class Model:
@@ -214,8 +218,9 @@ class Model:
             target = input[target_name]
 
         if isinstance(cost_function, str):
+            # Convert string reference to metric
             # TODO: this doesn't actually do anything yet
-            cost_function = get_cost_function(cost_function)
+            cost_function = get_metric(cost_function)
 
         if backend == 'scipy':
             # TODO: probably move this to a subroutine? will decide after
@@ -407,6 +412,35 @@ class Model:
         string += "\n" + tilde_break
 
         return string
+
+    @classmethod
+    def from_keywords(cls, *keywords):
+        """Construct a Model from a list of keywords or a model string.
+        
+        Parameters
+        ----------
+        keywords : N-tuple of strings
+            If first string contains hyphens, it will be interpreted as a
+            "model string" where each hyphen separates two keywords.
+
+        Returns
+        -------
+        Model
+
+        See also
+        --------
+        nems.layers.base.Layer.from_keyword
+        nems.scripts.keywords
+        
+        """
+        # Check for kw1-kw2-... (mode; string) format.
+        # If so, split into list of keywords
+        split = keywords[0].split('-')
+        if len(split) > 1:
+            layers = split
+        # Get Layer instances by invoking `Layer.from_keyword` through registry.
+        layers = [keyword_lib[kw] for kw in keywords]
+        return cls(layers=layers)
 
     # Add compatibility for saving to json
     def to_json(self):

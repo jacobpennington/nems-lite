@@ -1,4 +1,5 @@
 # TODO: should this go in nems.layers directory instead?
+#       or maybe nems.tools?
 
 import logging
 import inspect
@@ -15,7 +16,7 @@ class KeywordMissingError(Exception):
 
 
 class Keyword:
-    """Maps a Module to a string representation.
+    """Maps a Layer to a string representation.
     
     See also
     --------
@@ -29,11 +30,11 @@ class Keyword:
         Parameters
         ----------
         key : str
-            A short-hand description of a Module with a particular set of
+            A short-hand description of a Layer with a particular set of
             options.
         parse : callable
             Function that parses the full keyword string. In most cases this
-            should be the `from_keyword` method of the relevant Module.
+            should be the `from_keyword` method of the relevant Layer.
         source_string : str, optional
             Location (i.e., python layer or file) where `parse` was defined.
 
@@ -197,23 +198,20 @@ class KeywordRegistry:
 keyword_lib = KeywordRegistry(name="layers", warn_on_overwrite=True)
 
 def layer(name=None):
-    """Decorator for `Module.from_keyword()` methods.
+    """Decorator for `Layer.from_keyword()` methods.
     
     Returns
     -------
     decorator : function
         Registers a decorated function in `keyword_lib`.
 
-    Example
-    -------
-    ```
-    @layer('cool')
-    def from_keyword(keyword):
-        # parse keyword into some Module options
-        option1, option2 = my_kw_parser(keyword)
-
-        return CoolModule(option1, option2)
-    ```
+    Examples
+    --------
+    >>> @layer('cool')
+    >>> def from_keyword(keyword):
+    ...     # parse keyword into some Layer options
+    ...     option1, option2 = my_kw_parser(keyword)
+    ...     return CoolLayer(option1, option2)
     
     """
     def decorator(func):

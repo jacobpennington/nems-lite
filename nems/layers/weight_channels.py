@@ -62,7 +62,7 @@ class WeightChannels(Layer):
                 wc_class = GaussianWeightChannels
 
         if 'shape' not in kwargs:
-            return ValueError("WeightChannels requires a shape, ex: `wc.18x4`")
+            raise ValueError("WeightChannels requires a shape, ex: `wc.18x4`")
 
         return wc_class(**kwargs)
 
