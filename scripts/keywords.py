@@ -17,15 +17,15 @@ model = Model.from_keywords('wc', 'fir', 'dexp')
 model = Model.from_keywords('wc-fir-dexp')
 
 keywords = ['wc', 'fir', 'dexp']
-modules = [keyword_lib[k] for k in keywords]
-model = Model(modules=modules)
+layers = [keyword_lib[k] for k in keywords]
+model = Model(layers=layers)
 
-modules = [WeightChannels, FIR, DoubleExponential]
-model = Model(modules=modules)
+layers = [WeightChannels, FIR, DoubleExponential]
+model = Model(layers=layers)
 
 
-# Specify module options using keywords. The following are equivalent.
-# TODO: add a str vs Module check in add_module instead of using
+# Specify layer options using keywords. The following are equivalent.
+# TODO: add a str vs Module check in add_layer instead of using
 #       a separate .from_keywords method?
-model.add_module('wc.4x18.g')
-model.add_module(WeightChannels(shape=(4,18), parameterization='gaussian'))
+model.add_layer('wc.4x18.g')
+model.add_layer(WeightChannels(shape=(4,18), parameterization='gaussian'))
