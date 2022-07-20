@@ -246,6 +246,8 @@ class Model:
             # TODO: maybe set Model.default_fitter_options for this instead?
             #       
             fitter_options = {}
+        if backend is None:
+            backend = self.default_backend
         if isinstance(cost_function, str):
             # Convert string reference to metric function
             cost_function = get_metric(cost_function)
@@ -263,10 +265,11 @@ class Model:
             initial_parameters = self.get_parameter_vector(as_list=True)
             bounds = self.get_bounds_vector(none_for_inf=True)
             cost_args = (self, input, target, cost_function, eval_kwargs)
-            improved_parameters = scipy.optimize.minimize(
+            fit_result = scipy.optimize.minimize(
                 _scipy_cost_wrapper, initial_parameters, cost_args,
                 method='L-BFGS-B', **fitter_options
             )
+            improved_parameters = fit_result.x
             self.set_parameter_vector(improved_parameters)
 
         elif (backend == 'tf') or (backend == 'tensorflow'):
@@ -418,7 +421,7 @@ class Model:
         args_string = ", ".join([f"{a}" for a in args])
         kwargs_string = ", ".join([f"{k}={v}" for k, v in kwargs.items()])
         attr_string = ""
-        for attr in ['input', 'output', 'target', 'state', 'backend']:
+        for attr in ['input', 'output', 'state', 'backend']:
             default = f'default_{attr}'
             self_attr = getattr(self, default)
             base_attr = getattr(Model, default)
