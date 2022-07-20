@@ -14,7 +14,6 @@ del nems.layers
 class Model:
     default_input = 'stimulus'
     default_output = 'prediction'
-    default_target = 'response'
     default_state = 'state'
     default_backend = 'scipy'
 
@@ -193,9 +192,9 @@ class Model:
         return self.evaluate(input, return_full_data=return_full_data,
                              **eval_kwargs)
 
-    def fit(self, input, target=None, target_name=None, backend='scipy',
+    def fit(self, input, target=None, target_name=None, backend=None,
             cost_function='mse', fitter_options=None, **eval_kwargs):
-        """WIP.
+        """Optimize model parameters to match `Model.predict(input)` to target.
         
         TODO: where do jackknife indices fit in? possibly use segmentor idea
               from old NEMS that never really got implemented, as an alternative
@@ -210,16 +209,45 @@ class Model:
 
         Parameters
         ----------
+        input : np.ndarray or dict
+            If ndarray, use this as the input to the first Layer. Otherwise,
+            use keys specified by `input_name` or `Layer.input` to determine
+            the first input.
+        target : np.ndarray or None; optional.
+            If ndarray, this will be the fitter's target data (i.e. try to
+            match the model prediction to this). This option can only be used
+            in conjunction with ndarray `input`. If other data is needed, use a
+            dictionary input containing all data and specify `target_name` to
+            indicate the key of the target data.
+        target_name : str or None; optional.
+            If str, and `target is None`, then `target_name` should be the key
+            for the target data in `input`.
+        backend : str or None; optional.
+            Determines how Model will be fit.
+            If None    : Refer to `Model.default_backend`.
+            If 'scipy' : Use `scipy.optimize.minimize(method='L-BFGS-B')`.
+            If 'tf'    : Use TensorFlow. Also aliased as 'tensorflow'.
+            # TODO: any other options we want to support?
         cost_function : str or func; default='mse'
-        
+            Specifies which metric to use for computing error while fitting.
+            If str  : Invoke `nems.metrics.get_metric(str)`.
+            If func : Use this function to compute errors. Should accept two
+                      array arguments and return float.
+        fitter_options : dict or None
+            Keyword arguments to pass on to the fitter. For a list of valid
+            options, see documentation for `scipy.optimize.minimize`
+            and TODO: tensorflow.
+
         """
         if target is None:
             # Must specify either target or target_name
             target = input[target_name]
-
+        if fitter_options is None:
+            # TODO: maybe set Model.default_fitter_options for this instead?
+            #       
+            fitter_options = {}
         if isinstance(cost_function, str):
-            # Convert string reference to metric
-            # TODO: this doesn't actually do anything yet
+            # Convert string reference to metric function
             cost_function = get_metric(cost_function)
 
         if backend == 'scipy':
@@ -236,7 +264,8 @@ class Model:
             bounds = self.get_bounds_vector(none_for_inf=True)
             cost_args = (self, input, target, cost_function, eval_kwargs)
             improved_parameters = scipy.optimize.minimize(
-                _scipy_cost_wrapper, initial_parameters, cost_args
+                _scipy_cost_wrapper, initial_parameters, cost_args,
+                method='L-BFGS-B', **fitter_options
             )
             self.set_parameter_vector(improved_parameters)
 

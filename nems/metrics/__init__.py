@@ -19,11 +19,13 @@ from .mse import mse, nmse
 from .correlation import correlation, noise_corrected_r
 
 
+metric_nicknames = {'corr': correlation, 'r_ceiling': noise_corrected_r}
 def get_metric(name):
-    # TODO: track a dict or something to point string ref from
-    #       Model.fit api to appropriate function.
+    if name in metric_nicknames:
+        metric = metric_nicknames[name]
+    else:
+        metric = globals().get(name, None)
+    if metric is None:
+        raise TypeError(f"Metric name '{name}' could not be found.")
 
-    #       Initial idea: only have a hand-coded dict for a few nicknames,
-    #       otherwise require that string is the actual name of the function
-    #       (which should be easy to find since they're all in the same place).
-    pass
+    return metric
