@@ -8,3 +8,5 @@ Contents
     `equivalence.py` : Measure functional similarity of different models.
 
 """
+
+from .performance import get_cost_function

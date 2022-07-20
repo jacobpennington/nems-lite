@@ -114,8 +114,8 @@ def my_complicated_data_loader(file_path):
 stim, resp, pupil, state = my_complicated_data_loader('/path/data.csv')
 
 
-# For a model that uses multiple inputs, we need to package the input data into
-# a dictionary. This way, modules can specify which inputs they need using the
+# For a model that uses multiple inputs, we package the input data into
+# a dictionary. This way, layers can specify which inputs they need using the
 # assigned keys.
 data = {'stimulus': stim, 'pupil': pupil, 'state': state, 'response': resp}
 

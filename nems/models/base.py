@@ -1,6 +1,10 @@
 from operator import itemgetter
+from functools import partial
 
 import numpy as np
+import scipy.optimize
+
+from nems.metrics import get_cost_function
 
 
 class Model:
@@ -13,7 +17,8 @@ class Model:
     def __init__(self, layers=None):
         # TODO
         self._layers = {}  #  layer.name : layer obj, increment on clashes
-        pass
+        if layers is not None:
+            self.add_layers(*layers)
 
     @property
     def layers(self):
@@ -50,7 +55,7 @@ class Model:
         """TODO: add layer at specific integer index."""
         raise NotImplementedError
 
-    def evaluate(self, input, input_name=None, state=None, state_name=None,
+    def evaluate(self, input, state=None, input_name=None, state_name=None,
                  output_name=None, return_full_data=True):
         """Transform input(s) by invoking `Layer.evaluate` for each Layer.
 
@@ -62,6 +67,10 @@ class Model:
             If ndarray, use this as the input to the first Layer. Otherwise,
             use keys specified by `input_name` or `Layer.input` to determine
             the first input.
+        state : ndarray or None; optional.
+            If ndarray, add to intermediate data dictionary. This option can
+            only be used in conjunction with an array `input`. If other data is
+            needed, use a dictionary input containing all data.
         input_name : str or None; optional.
             Specifies which data stream should be provided as input to the
             first layer. Note that priority will be given to `Layer.input` in
@@ -71,10 +80,6 @@ class Model:
             If None : use `Layer.input` of first layer if specified,
                       otherwise `Model.default_input`.
             If str  : a single input array at key `input_name`.
-        state : ndarray or None; optional.
-            If ndarray, add to intermediate data dictionary. This option can
-            only be used in conjunction with an array `input`. If other data is
-            needed, use a dictionary input containing all data.
         state_name : str or None; optional.
             If str, and `state is not None`, then `state_name` will be the key
             for `state`. Otherwise, `Model.default_state` will be used.
@@ -178,23 +183,63 @@ class Model:
             data = data_out
         return data
 
+
     def predict(self, input, return_full_data=False, **eval_kwargs):
         """As `Model.evaluate`, but return only the last output by default."""
         return self.evaluate(input, return_full_data=return_full_data,
                              **eval_kwargs)
 
-    def fit(self, input, target, state=None, fitter_options=None, **eval_kwargs):
-        # TODO: see `scripts/simple_fit.py` for ideas on how to format this.
-        #       But overall, should be a straightforward wrapper/router that
-        #       picks an optimization (scipy, tensorflow, etc), calls the
-        #       relevant fn, and then updates parameters.
-        #
-        #       More complicated fits (like LBHB's three-stage initialization
-        #       for LN models) should *not* be included here in a huge if/else
-        #       statement. Instead, they should be separate functions that use
-        #       calls to this method as building blocks
-        #       (see `scripts/freeze_parameters.py`)
-        pass
+    def fit(self, input, target=None, target_name=None, backend='scipy',
+            cost_function='mse', fitter_options=None, **eval_kwargs):
+        """WIP.
+        
+        TODO: where do jackknife indices fit in? possibly use segmentor idea
+              from old NEMS that never really got implemented, as an alternative
+              to requiring jackknifing to be set up ahead of time.
+
+              simplest solution: don't deal with it here at all. can have a
+              separate method/function that just loops through calls to .fit
+              and sets indices in between.
+
+        TODO: want to add explicit support for multiple targets?
+              E.g. fit to two types of data simultaneously.
+
+        Parameters
+        ----------
+        cost_function : str or func; default='mse'
+        
+        """
+        if target is None:
+            # Must specify either target or target_name
+            target = input[target_name]
+
+        if isinstance(cost_function, str):
+            # TODO: this doesn't actually do anything yet
+            cost_function = get_cost_function(cost_function)
+
+        if backend == 'scipy':
+            # TODO: probably move this to a subroutine? will decide after
+            #       sketching out more
+            def _scipy_cost_wrapper(parameter_vector, model, input, target,
+                                    cost_fn, eval_kwargs):
+                model.set_parameter_vector(parameter_vector, ignore_checks=True)
+                prediction = model.predict(input, **eval_kwargs)
+                cost = cost_fn(prediction, target)
+                return cost
+            
+            initial_parameters = self.get_parameter_vector(as_list=True)
+            bounds = self.get_bounds_vector(none_for_inf=True)
+            cost_args = (self, input, target, cost_function, eval_kwargs)
+            improved_parameters = scipy.optimize.minimize(
+                _scipy_cost_wrapper, initial_parameters, cost_args
+            )
+            self.set_parameter_vector(improved_parameters)
+
+        elif (backend == 'tf') or (backend == 'tensorflow'):
+            # TODO: similar to scipy, last step should set new model parameters
+            #       in-place
+            raise NotImplementedError
+
 
     def score(self, prediction, target):
         # TODO: this should point to an independent utility function, but
