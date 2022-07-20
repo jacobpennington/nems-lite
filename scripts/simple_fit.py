@@ -117,7 +117,7 @@ stim, resp, pupil, state = my_complicated_data_loader('/path/data.csv')
 # For a model that uses multiple inputs, we need to package the input data into
 # a dictionary. This way, modules can specify which inputs they need using the
 # assigned keys.
-data = {'stimulus': stim, 'pupil': pupil, 'state': state}
+data = {'stimulus': stim, 'pupil': pupil, 'state': state, 'response': resp}
 
 
 # Now we build the Model as before, but we can specify which Layer receives
@@ -161,8 +161,8 @@ model = Model(layers=layers)
 # We fit as before, but provide the `data` dictionary in place of individual
 # variables. The necessary inputs are already specified in the layers, so we
 # only need to tell the model what data to match its output to
-# (`resp`) in this case.
-model.fit(input=data, target=resp)
+# (`resp` in this case, stored as `data['response']`).
+model.fit(input=data, target_name='response')
 prediction = model.predict(data)
 
 

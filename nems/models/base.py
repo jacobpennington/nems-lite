@@ -50,39 +50,40 @@ class Model:
         """TODO: add layer at specific integer index."""
         raise NotImplementedError
 
-    # TODO: come up with a different way to handle input/output mapping?
-    #       all the isinstance() checks make this a lot more complicated
-    #       than it really needs to be. But requiring everyone to specify a
-    #       dict isn't a very friendly API, since that requires looking at the
-    #       Layer.evaluate implementation (& other formats lose flexibility).
-    def evaluate(self, input, input_name=None, output_name=None,
-                 return_full_data=True):
+    def evaluate(self, input, input_name=None, state=None, state_name=None,
+                 output_name=None, return_full_data=True):
         """Transform input(s) by invoking `Layer.evaluate` for each Layer.
 
-        TODO
+        TODO: add more context, examples
 
         Parameters
         ----------
         input : ndarray or dict
-        input_name : str, list, dict, or None; optional
-            Specifies which data streams should be provided as inputs to the
-            first layer, where strings refer to keys in `input` (if dict). Note
-            that priority will be given to `Layer.input` in case of a clash.
-            I.e. if `input_name is not None`, but also `Layer.input is not None`
-            for the first layer, `Layer.input` will be used.
+            If ndarray, use this as the input to the first Layer. Otherwise,
+            use keys specified by `input_name` or `Layer.input` to determine
+            the first input.
+        input_name : str or None; optional.
+            Specifies which data stream should be provided as input to the
+            first layer. Note that priority will be given to `Layer.input` in
+            case of a clash. I.e. if `input_name is not None`, but also
+            `Layer.input is not None` for the first layer, `Layer.input` will
+            be used.
             If None : use `Layer.input` of first layer if specified,
                       otherwise `Model.default_input`.
             If str  : a single input array at key `input_name`.
-            If list : many input arrays with keys listed in `input_name`.
-            If dict : many input arrays, with keys specifying which parameter
-                      of `Layer.evaluate` each array is associated with.
-            (see `nems.layers.base.Layer` for examples)
-        output_name : str, list, or None; optional
-            Specifies name(s) for array output(s) of layers for which
+        state : ndarray or None; optional.
+            If ndarray, add to intermediate data dictionary. This option can
+            only be used in conjunction with an array `input`. If other data is
+            needed, use a dictionary input containing all data.
+        state_name : str or None; optional.
+            If str, and `state is not None`, then `state_name` will be the key
+            for `state`. Otherwise, `Model.default_state` will be used.
+        output_name : str or None; optional.
+            Specifies name(s) for array output the final layer if
             `Layer.output is None`.
             If None : use `Model.default_output`.
-            If str  : same name for every output (incremented if multiple).
-            If list : one name per output (length must match).
+            If str  : Use this name for each of the Layer's outputs
+                      (incremented if multiple).
         return_full_data : bool; default=True
             If True, return a dictionary containing all input data and all
             uniquely-keyed Layer outputs.
@@ -92,75 +93,86 @@ class Model:
         data : ndarray, list, or dict
             Format depends on `return_full_data` and the `evaluate` method of
             the final layer in the model.
+
+        See also
+        --------
+        nems.layers.base.Layer.evaluate
         
         """
 
         if input_name is None:
-            input_name = Model.default_input
+            input_name = self.default_input
         if output_name is None:
-            output_name = Model.default_output
-        data = {}
+            output_name = self.default_output
+        if state_name is None:
+            state_name = self.default_state
+
+        if isinstance(input, np.ndarray):
+            data = {input_name: input}
+            if state is not None:
+                data[state_name] = state
+        else:
+            # Arrays in shallow copy will share memory, but the new data
+            # dictionary will end up with additional keys.
+            data = input.copy()
+
+        # Set first input if None
+        all_inputs = [layer.input for layer in self.layers]
+        if all_inputs[0] is None:
+            all_inputs[0] = input_name
+        # Set last output if None
+        all_outputs = [layer.output for layer in self.layers]
+        if all_outputs[-1] is None:
+            all_outputs[-1] = output_name
 
         # Loop through transformations
-        next_input = None
-        for layer in self.layers:
-            if (next_input is None) and (layer.input is None):
-                # First iteration, first layer didn't specify input.
-                if isinstance(input, np.ndarray):
-                    # Single array input, leave next_input as None
-                    # but specify first "data_out"
-                    data_out = [input]
-                else:
-                    # Refer to input_name to find data (or model default).
-                    next_input = input_name
-            else:
-                # Use Layer.input to find data
-                next_input = layer.input
-
+        iter_zip = zip(self.layers, all_inputs, all_outputs)
+        for layer, next_input, next_output in iter_zip:
             if next_input is None:
                 # Use previous output
                 data_in = data_out
-                data_out = layer.evaluate(*data_in)
+                state_in = {}
+                if (layer.state_name is not None):
+                    state_in[layer.state_name] = data[state_name]
+                data_out = layer.evaluate(*data_in, **state_in)
+            elif isinstance(next_input, str):
+                # Get data from one key
+                data_in = data[next_input]
+                data_out = layer.evaluate(data_in)
             elif isinstance(next_input, list):
                 # Get data from all keys, in list order
-                data_in = [input[k] for k in next_input]
+                data_in = [data[k] for k in next_input]
                 data_out = layer.evaluate(*data_in)
             elif isinstance(next_input, dict):
                 # Map evaluate arguments to specific data keys
-                data_in = {k: input[v] for k, v in next_input.items()}
+                data_in = {k: data[v] for k, v in next_input.items()}
                 data_out = layer.evaluate(**data_in)
             else:
-                # message TODO
-                raise TypeError
+                raise TypeError(
+                    f"Unrecognized type for {layer.name}.input:"
+                    f"{type(next_input)}"
+                    )
 
             # Cast output as list if only one array, for fewer checks
             if not isinstance(data_out, (list, tuple)):
                 data_out = [data_out]
 
-            if layer.output is None:
-                # Refer to output name for correct key(s) to save.
-                # TODO: Maybe a better default is to just not save if
-                #       output is None, unless it's the final layer?
-                #       Otherwise, a lot of intermediate defaults could stack
-                #       up that aren't overwritten by subsequent layers with
-                #       different numbers of outputs.
-                next_output = output_name
-            else:
-                # Check layer.output for key(s).
-                next_output = layer.output
-            if isinstance(next_output, str):
-                output_keys = [
-                    f"{next_output}.{i}" if i != 0 else f"{next_output}"
-                    for i in range(len(next_output))
-                    ]
-            elif isinstance(next_output, list):
-                output_keys = next_output
-            else:
-                # message TODO
-                raise TypeError
-            
-            for k, v in zip(output_keys, data_out):
-                data[k] = v
+            if next_output is not None:
+                if isinstance(next_output, str):
+                    output_keys = [
+                        f"{next_output}.{i}" if i != 0 else f"{next_output}"
+                        for i in range(len(next_output))
+                        ]
+                elif isinstance(next_output, list):
+                    output_keys = next_output
+                else:
+                    raise TypeError(
+                        f"Unrecognized type for {layer.name}.output:"
+                        f"{type(next_output)}"
+                        )
+                
+                for k, v in zip(output_keys, data_out):
+                    data[k] = v
 
         if not return_full_data:
             data = data_out
@@ -171,7 +183,7 @@ class Model:
         return self.evaluate(input, return_full_data=return_full_data,
                              **eval_kwargs)
 
-    def fit(self):
+    def fit(self, input, target, state=None, fitter_options=None, **eval_kwargs):
         # TODO: see `scripts/simple_fit.py` for ideas on how to format this.
         #       But overall, should be a straightforward wrapper/router that
         #       picks an optimization (scipy, tensorflow, etc), calls the

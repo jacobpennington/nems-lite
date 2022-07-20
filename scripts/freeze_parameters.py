@@ -48,7 +48,7 @@ model.freeze_layers('wc', 'fir', 'lvl')
 
 # Fit the model again, using the previous fit as a starting point.
 model.fit(recording=recording, stimulus_name='stimulus',
-          response_name='response', fit_options=initialization,
+          response_name='response', fitter_options=initialization,
           reset_parameters=False)
 
 # Unfreeze the linear portion.
@@ -61,7 +61,7 @@ model.unfreeze_layers('wc', 'fir', 'lvl')
 # optimization tolerance.
 final_fit = {'tolerance': 1e4}
 model.fit(recording=recording, stimulus_name='stimulus',
-          response_name='response', fit_options=final_fit,
+          response_name='response', fitter_options=final_fit,
           reset_parameters=False)
 
 # NOTE: In this example, we always froze all parameters of a given module using
@@ -78,7 +78,7 @@ model.layers['dexp'].freeze_parameters('kappa')
 #       over for use-cases like this, when the arguments always stay the same.
 #       Maybe it would be useful to store pointers to the last fit arguments
 #       used in the model? Then we could use something like:
-model.refit(fit_options=final_fit)
+model.refit(fitter_options=final_fit)
 
 # Idea being that this would copy all previous arguments, unless a new one
 # is provided to overwrite them.

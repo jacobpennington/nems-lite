@@ -30,8 +30,8 @@ class Layer:
         super().__init_subclass__(**kwargs)
         cls.subclasses[cls.__name__] = cls
 
-    def __init__(self, input=None, output=None, parameters=None, priors=None,
-                 bounds=None, name=None):
+    def __init__(self, input=None, output=None, parameters=None,
+                 priors=None, bounds=None, name=None):
         """Encapsulates one data-transformation step of a NEMS ModelSpec.
 
         Layers are intended to exist as components of a parent Model by
@@ -44,7 +44,7 @@ class Layer:
             parent Model during evaluation, where strings refer to keys for a
             dict of arrays provided to `Model.fit`.
             If None : output of previous Layer.
-            If str  : a single input array (will convert to singleton list).
+            If str  : a single input array.
             If list : many input arrays.
             If dict : many input arrays, with keys specifying which parameter
                       of `Layer.evaluate` each array is associated with.
@@ -129,21 +129,26 @@ class Layer:
 
         """
 
-        # input/output should be a list of strings, a dict of strings, or None
-        if isinstance(input, str):
-            self.input = [input]
-        else:
-            self.input = input
+        # input/output should be string, list of strings,
+        # dict of strings, or None
+        self.input = input
         self.output = output
 
-        self.name = name if name is not None else 'unnamed module'
-        self.bounds = bounds
         self.priors = priors
+        self.bounds = bounds
+        self.name = name if name is not None else 'unnamed module'
         self.model = None  # pointer to parent ModelSpec
 
         if parameters is None:
             parameters = self.initial_parameters()
         self.parameters = parameters
+
+        # If string, `state_name` will be interpreted as the name of an argument
+        # for `Layer.evaluate`. During Model evaluation, if `Layer.input` is
+        # None and a state array is provided to `Model.evaluate`, then state
+        # will be added to other inputs as a keyword argument, i.e.:
+        # `layer.evaluate(*inputs, **state)`.
+        self.state_name = None
 
     @layer('baseclass')
     @staticmethod
