@@ -79,7 +79,7 @@ class Distribution:
             sample = self.distribution.rvs(size=size)
             if bounds is not None:
                 lower, upper = bounds
-                keep = (sample >= lower) | (sample <= upper)
+                keep = (sample >= lower) & (sample <= upper)
                 good_sample[keep] = sample[keep]
             else:
                 good_sample = sample
