@@ -1023,23 +1023,22 @@ class Phi:
         if i >= array_length:
             # Array isn't that big yet, so add new vector(s).
             new_indices = range(array_length, i+1)
-            match new_index:
-                case 'sample':
-                    new_vectors = [self.sample() for j in new_indices]
-                case 'mean':
-                    new_vectors = [self.mean() for j in new_indices]
-                case 'initial':
-                    new_vectors = [
-                        np.concatenate([p.initial_value
-                                       for p in self._dict.values()])
-                        for j in new_indices
-                        ]
-                case 'copy':
-                    new_vectors = [self.get_vector() for j in new_indices]
-                case None:
-                    # Don't add new vectors, raise an error instead. May be
-                    # useful for testing.
-                    raise IndexError(f'list index {i} out of range for Phi.')
+            if new_index == 'sample':
+                new_vectors = [self.sample() for j in new_indices]
+            elif new_index == 'mean':
+                new_vectors = [self.mean() for j in new_indices]
+            elif new_index == 'initial':
+                new_vectors = [
+                    np.concatenate([p.initial_value
+                                    for p in self._dict.values()])
+                    for j in new_indices
+                    ]
+            elif new_index == 'copy':
+                new_vectors = [self.get_vector() for j in new_indices]
+            else:
+                # Should be None. Don't add new vectors, raise an error
+                # instead. May be useful for testing.
+                raise IndexError(f'list index {i} out of range for Phi.')
             # Convert to 2-dim vectors and concatenate after existing vectors
             new_rows = [v[np.newaxis, ...] for v in new_vectors]
             self._array = np.concatenate([self._array] + new_rows)

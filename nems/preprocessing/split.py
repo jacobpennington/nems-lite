@@ -40,6 +40,8 @@ def split_at_indices(data, idx1, idx2, axis=0):
     return first_subset, second_subset
 
 
+# TODO: should this return a generator instead of list?
+#       would use less data if the number of indices gets really large
 def get_jackknife_indices(data, n, axis=0, full_shuffle=False,
                           shuffle_jacks=True):
     """Generate indices for selecting `n` jackknife replicates from `data`.
