@@ -359,8 +359,13 @@ class Model:
         nems.layers.base.Layer.set_parameter_vector
         
         """
+        first_index = 0
         for layer in self.layers:
-            layer.set_parameter_vector(vector, ignore_checks=ignore_checks)
+            parameter_size = layer.parameters.size
+            last_index = first_index + parameter_size
+            layer.set_parameter_vector(vector[first_index:last_index],
+                                       ignore_checks=ignore_checks)
+            first_index = last_index
 
     def sample_from_priors(self, inplace=True, as_vector=False):
         """Get or set new parameter values by sampling from priors.
