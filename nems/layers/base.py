@@ -236,9 +236,10 @@ class Layer:
         """Get initial values for `Layer.parameters`.
         
         Default usage is that `Layer.initial_parameters` will be invoked during
-        construction to set `Layer.parameters` if `parameters=None`. Each
+        construction to set `Layer.parameters` if `parameters is None`. Each
         Layer subclass should overwrite this method to initialize appropriate
-        values for its parameters.
+        values for its parameters, and document the Layer's parameters in the
+        overwritten docstring.
 
         Returns
         -------

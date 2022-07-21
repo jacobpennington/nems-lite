@@ -11,15 +11,17 @@ from nems.registry import layer
 class WeightChannels(Layer):
 
     def __init__(self, shape, **kwargs):
-        """TODO: docstring
+        """Compute linear weighting of input channels, akin to a dense layer.
 
         Parameters
         ----------
         shape : 2-tuple
-            First entry specifies the expected spectral dimension of the input,
-            second entry is the spectral dimension of the output. Shape will be
-            used to initialize the `'coefficients'` Parameter
-            if parameters=None.
+            Determines the shape of `WeightChannels.coefficients`.
+            First dimension should match the spectral dimension of the input,
+            second dimension should match the spectral dimension of the output.
+            Note that higher-dimesional shapes are also allowed and should work
+            as-is for this base class, but overall Layer design is intended for
+            2-dimensional data so subclasses might not support other shapes.
         parameters : Phi or None, optional
             Specifies the value of each variable used to compute
             `WeightChannels.evaluate()`. If `None`, values will be determined by
@@ -28,27 +30,80 @@ class WeightChannels(Layer):
         Returns
         -------
         WeightChannels
-        
+
+        Examples
+        --------
+        >>> wc = WeightChannels(shape=18,4)
+        >>> spectrogram = np.random.rand(10000, 18)  # (time, channels)
+        >>> out = spectrogram @ wc.coefficients      # wc.evaluate(spectrogram)
+        >>> out.shape
+        (10000, 4)
+
         """
         self.shape = shape
         super().__init__(**kwargs)
 
     def initial_parameters(self):
+        """Get initial values for `WeightChannels.parameters`.
+        
+        Layer parameters
+        ----------------
+        coefficients : ndarray
+            Shape matches `WeightChannels.shape`.
+            Prior:  TODO, currently using defaults
+            Bounds: TODO
+
+        """
         coefficients = Parameter(name='coefficients', shape=self.shape)
         return Phi(coefficients)
 
     @property
     def coefficients(self):
-        """Subclasses overwrite this, so `evaluate` doesn't need to change."""
+        """Weighting matrix that will be applied to input.
+        
+        Subclasses should overwrite this so that `evaluate` doesn't need
+        to change.
+
+        Returns
+        -------
+        coefficients : ndarray
+            coefficients.shape = WeightChannels.shape
+        
+        """
         return self.parameters['coefficients']
 
     def evaluate(self, *inputs):
-        """TODO: docstring, and check ordering on matrix multiplication."""
-        y = [x @ self.coefficients for x in inputs]
-        return y
+        """Multiply input(s) by WeightChannels.coefficients.
+
+        Computes $y = XA$ for each input $X$,
+        where $A$ is `WeightChannels.coefficients` and $y$ is one output.
+        
+        Parameters
+        ----------
+        inputs : N-tuple of ndarray
+
+        Returns
+        -------
+        list of ndarray
+            Length of list matches number of inputs.
+        
+        """
+        return [x @ self.coefficients for x in inputs]
 
     @layer('wc')
     def from_keyword(keyword):
+        """Construct WeightChannels (or subclass) from keyword.
+
+        Keyword options
+        ---------------
+        {digit}x{digit}x ... x{digit} : N-dimensional shape.
+        g : Use gaussian function(s) to determine coefficients.
+
+        See also
+        --------
+        Layer.from_keyword
+        
+        """
         wc_class = WeightChannels
         kwargs = {}
 
@@ -67,6 +122,7 @@ class WeightChannels(Layer):
         return wc_class(**kwargs)
 
     def to_json(self):
+        """Encode WeightChannels as a dictionary. See Layer.to_json."""
         data = Layer.to_json(self)
         data['kwargs'].update(shape=self.shape)
         return data
@@ -74,16 +130,27 @@ class WeightChannels(Layer):
 
 class GaussianWeightChannels(WeightChannels):
 
-    def __init__(**kwargs):
-        """TODO: overwrite docstring for expected parameters but same init."""
-        super().__init__(**kwargs)
-
     def initial_parameters(self):
+        """Get initial values for `GaussianWeightChannels.parameters`.
+        
+        Layer parameters
+        ----------------
+        mean : scalar or ndarray
+            Mean of gaussian, shape is (N_outputs,).
+            Prior:  TODO  # Currently using defaults
+            Bounds: (0, 1)
+
+        std : scalar or ndarray
+            Standard deviation of gaussian, shape is (N_outputs,).
+            Prior:  TODO  # Currently using defaults
+            Bounds: (0, np.inf)
+
+        """
         n_output_channels, _ = self.shape
         shape = (n_output_channels,)
         parameters = Phi(
             Parameter(name='mean', shape=shape, bounds=(0, 1)),
-            Parameter(name='std', shape=shape, bounds=(0, None))
+            Parameter(name='std', shape=shape, bounds=(0, np.inf))
             )
 
         return parameters
