@@ -440,12 +440,12 @@ class Layer:
             (and, in turn, Phi._array) inplace. Otherwise, the
             sampled values will be returned without changing current values.
         as_vector : bool, default=False
-            If True, return sampled values as a flattened list instead of a
+            If True, return sampled values as a flattened vector instead of a
             list of arrays.
 
         Returns
         -------
-        samples
+        samples : ndarray or list of ndarray
 
         See also
         --------
@@ -464,12 +464,12 @@ class Layer:
             (and, in turn, `Phi._array`) inplace. Otherwise, means
             will be returned without changing current values.
         as_vector : bool, default=False
-            If True, return means as a flattened list instead of a
+            If True, return means as a flattened vector instead of a
             list of arrays.
 
         Returns
         -------
-        means : list
+        means : ndarray or list of ndarray
 
         See also
         --------
@@ -957,17 +957,15 @@ class Phi:
             (and, in turn, `Phi._array`) inplace. Otherwise, the sampled values
             will be returned without changing current values.
         as_vector : bool, default=True
-            If True, return sampled values as a flattened list instead of a
+            If True, return sampled values as a flattened vector instead of a
             list of arrays.
 
         Return
         ------
-        samples : list
+        samples : ndarray or list of ndarray
 
         """
-        samples = []
-        for p in self._dict.values():
-            samples.append(p.sample(inplace=inplace))
+        samples = [p.sample(inplace=inplace) for p in self._dict.values()]
         if as_vector:
             unravelled = [np.ravel(s) for s in samples]
             samples = np.concatenate(unravelled)
@@ -991,9 +989,7 @@ class Phi:
         means : list
 
         """
-        means = []
-        for p in self._dict.values():
-            means.append(p.mean(inplace=inplace))
+        means = [p.mean(inplace=inplace) for p in self._dict.values()]
         if as_vector:
             unravelled = [np.ravel(m) for m in means]
             means = np.concatenate(unravelled)

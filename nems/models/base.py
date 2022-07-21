@@ -362,6 +362,62 @@ class Model:
         for layer in self.layers:
             layer.set_parameter_vector(vector, ignore_checks=ignore_checks)
 
+    def sample_from_priors(self, inplace=True, as_vector=False):
+        """Get or set new parameter values by sampling from priors.
+        
+        Parameters
+        ----------
+        inplace : bool, default=True
+            If True, sampled values will be used to update each Parameter
+            inplace. Otherwise, the sampled values will be returned without
+            changing current values.
+        as_vector : bool, default=False
+            If True, return sampled values as a flattened vector instead of a
+            list of arrays.
+
+        Returns
+        -------
+        samples : ndarray or list of ndarray
+
+        See also
+        --------
+        nems.layers.base.Layer.sample_from_priors
+
+        """
+        samples = [l.sample_from_priors(inplace=inplace, as_vector=as_vector)
+                   for l in self.layers]
+        if as_vector:
+            samples = np.concatenate(samples)
+        return samples
+
+    def mean_of_priors(self, inplace=True, as_vector=False):
+        """Get, or set parameter values to, mean of priors.
+        
+        Parameters
+        ----------
+        inplace : bool, default=True
+            If True, mean values will be used to update each Parameter
+            (and, in turn, `Phi._array`) inplace. Otherwise, means
+            will be returned without changing current values.
+        as_vector : bool, default=False
+            If True, return means as a flattened vector instead of a
+            list of arrays.
+
+        Returns
+        -------
+        means : ndarray or list of ndarray
+
+        See also
+        --------
+        nems.layers.base.Phi.mean
+
+        """
+        means = [l.mean_of_priors(inplace=inplace, as_vector=as_vector)
+                 for l in self.layers]
+        if as_vector:
+            means = np.concatenate(means)
+        return means
+
     def set_index(self, index, new_index='initial'):
         """Change which set of parameter values is referenced.
 
