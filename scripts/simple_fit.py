@@ -60,7 +60,7 @@ model.add_layers(
 # will be the input to the second layer and so on. The fitter will try to match
 # the final output (of the StateGain layer in this case) to `target`.
 #
-# Some modules, like StateGain, expect state data to be present in some form
+# Some layers, like StateGain, expect state data to be present in some form
 # as an additional model input, so we also specify `pupil_size` as state data.
 # 
 # By default, `scipy.optimize.minimize` will be used for optimization
@@ -132,7 +132,7 @@ data = {'stimulus': stim, 'pupil': pupil, 'state': state, 'response': resp}
 # (`WeightChannels`, `FIR`, and `DoubleExponential`) separately from the rest,
 # so we specify `output='LN_output'` for `DoubleExponential`.
 #
-# We want to apply the `Sum` module to the output of the LN portion of the
+# We want to apply the `Sum` layer to the output of the LN portion of the
 # model and to both of our state variables. The order of the data variables
 # doesn't matter for this layer, so we provide a list of the dictionary keys.
 #

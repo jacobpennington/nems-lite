@@ -116,7 +116,10 @@ class WeightChannels(Layer):
         if 'shape' not in kwargs:
             raise ValueError("WeightChannels requires a shape, ex: `wc.18x4`")
 
-        return wc_class(**kwargs)
+        wc = wc_class(**kwargs)
+        wc.name = options[0]  # keyword head, 'wc'
+
+        return wc
 
     def to_json(self):
         """Encode WeightChannels as a dictionary. See Layer.to_json."""
@@ -130,6 +133,10 @@ class GaussianWeightChannels(WeightChannels):
     def initial_parameters(self):
         """Get initial values for `GaussianWeightChannels.parameters`.
         
+        # TODO: Currently this assumes 2D shape, with time on the first axis
+        #       We should refactor to support higher-dimensional weights
+        #       and different ordering of dimensions.
+
         Layer parameters
         ----------------
         mean : scalar or ndarray
@@ -143,7 +150,7 @@ class GaussianWeightChannels(WeightChannels):
             Bounds: (0, np.inf)
 
         """
-        n_output_channels, _ = self.shape
+        _, n_output_channels = self.shape
         shape = (n_output_channels,)
         parameters = Phi(
             Parameter(name='mean', shape=shape, bounds=(0, 1)),
@@ -158,15 +165,19 @@ class GaussianWeightChannels(WeightChannels):
     #       broadband would get a reduced response.
     @property
     def coefficients(self):
-        """Return N discrete gaussians with T bins, where `self.shape=(N,T)`."""
+        """Return N discrete gaussians with T bins, where `self.shape=(T,N)`.
+        
+        # TODO: add axis_X = Y options to make this not assume 
+        
+        """
         mean = self.parameters['mean'].values
         std = self.parameters['std'].values
-        _, n_input_channels = self.shape
+        n_input_channels, _ = self.shape
 
         x = np.arange(n_input_channels)/n_input_channels
         mean = np.asanyarray(mean)[..., np.newaxis]
-        sd = np.asanyarray(sd)[..., np.newaxis]
-        coefficients = np.exp(-0.5*((x-mean)/sd)**2)
+        std = np.asanyarray(std)[..., np.newaxis]
+        coefficients = np.exp(-0.5*((x-mean)/std)**2).T
 
         # Normalize by the cumulative sum for each channel
         cumulative_sum = np.sum(coefficients, axis=1, keepdims=True)
