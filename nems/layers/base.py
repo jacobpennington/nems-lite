@@ -1412,6 +1412,8 @@ class Parameter:
         string += dash_break
         return string
 
+    # Add compatibility with numpy ufuncs, len(), and other methods that
+    # should point to `Parameter.values` instead of `Parameter`.
     def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
         """Propagate numpy ufunc operations to `Parameter.values`.
         
@@ -1436,3 +1438,9 @@ class Parameter:
         output = f(*subbed_inputs, **kwargs)
 
         return output
+
+    def __len__(self):
+        return len(self.values)
+
+    def __iter__(self):
+        return self.values.__iter__()

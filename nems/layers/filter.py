@@ -66,10 +66,10 @@ class FIR(Layer):
         """
 
         # TODO: this just points to the old code for now, but the subroutines
-        #       work on array data so should work without further modification
+        #       work on array data so should work without much modification
         #       in the meantime.
         output = [
-            per_channel(x, self.coefficients, non_causal=False, rate=1)
+            per_channel(x.T, self.coefficients, non_causal=False, rate=1)
             for x in inputs
             ]
         return output
