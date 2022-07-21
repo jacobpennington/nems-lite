@@ -73,8 +73,6 @@ class FIR(Layer):
             for x in inputs
             ]
         return output
-
-        
         # TODO: Talk to Stephen about this again?. The FIR code in old NEMS
         #       seems way more complicated than it should be, but it's probably
         #       checking for a lot of special cases/boundary effects and it's
@@ -91,6 +89,14 @@ class FIR(Layer):
         # using mode='same' is going to do... "something" to make the shapes
         # match and I'm not clear yet on what that is exactly.
         scipy.signal.convolve(input, self.coefficients)
+
+    def old_evaluate(self, *inputs):
+        """Temporary copy of old nems implementation, for testing."""
+        output = [
+            per_channel(x.T, self.coefficients, non_causal=False, rate=1)
+            for x in inputs
+            ]
+        return output
     
     @layer('fir')
     def from_keyword(keyword):
