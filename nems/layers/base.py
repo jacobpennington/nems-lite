@@ -1440,3 +1440,8 @@ class Parameter:
 
     def __iter__(self):
         return self.values.__iter__()
+
+    @property
+    def T(self):
+        # np.transpose() works without this, but have to add .T separately.
+        return self.values.T

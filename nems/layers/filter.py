@@ -1,3 +1,5 @@
+from itertools import chain
+
 import numpy as np
 import scipy.signal
 
@@ -60,40 +62,44 @@ class FIR(Layer):
 
     def evaluate(self, *inputs):
         """Convolve `FIR.coefficients` with input(s).
-    
-        TODO: need to pick a convolution implementation (see notes in function)
+
+        TODO: need to figure out the "correct" way to pad the removed entries.
+              since zi for old was always just zeros with one less entry, I'm
+              guessing it essentially just tacked those zeros on to the beginning
+              of the output?
+
+              No, that doesn't work (output of old one doesn't have zero padding
+              in the output anyway). Maybe they're added on to the input prior
+              to convolution? Will have to look at the lfilter code more closely
+              I guess, can't tell from the NEMS code.
+
+              Ah... yes, zi gets appended to input prior to convolution. But
+              testing after making that change, the outputs are still very
+              different. May have something to do with the fact that old
+              NEMS explicitly sums each channel? 
         
         """
 
-        # TODO: this just points to the old code for now, but the subroutines
-        #       work on array data so should work without much modification
-        #       in the meantime.
-        output = [
-            per_channel(x.T, self.coefficients, non_causal=False, rate=1)
-            for x in inputs
-            ]
+        # TODO: handle arbitrary dimensionality
+        #       (will need to flip on each additional matched axis, every axis
+        #        has to match except the one being "convolved on" -- really they're
+        #        all convolved but valid throws the other stuff out)
+
+        n_channels, filter_length = self.shape[:2]
+        padding = np.zeros(shape=(filter_length-1, n_channels))
+        output = []
+        for x in inputs:
+            c = np.flip(self.coefficients.T, axis=1)
+            input_with_padding = np.concatenate([padding, x])
+            z = scipy.signal.convolve(input_with_padding, c, mode='valid')
+            output.append(z)
+
         return output
-        # TODO: Talk to Stephen about this again?. The FIR code in old NEMS
-        #       seems way more complicated than it should be, but it's probably
-        #       checking for a lot of special cases/boundary effects and it's
-        #       not easy to pick through.
-        #output = scipy.signal.lfilter(self.coefficients, [1], x_, zi=zi)
-
-        # numpy option
-        single_channel_input = None  # select from input somehow
-        single_channel_filter = None # select from coefficients somehow
-        output = np.convolve(single_channel_input, single_channel_filter)
-
-        # alternate scipy option
-        # would still need to deal with boundaries somehow, otherwise just
-        # using mode='same' is going to do... "something" to make the shapes
-        # match and I'm not clear yet on what that is exactly.
-        scipy.signal.convolve(input, self.coefficients)
 
     def old_evaluate(self, *inputs):
         """Temporary copy of old nems implementation, for testing."""
         output = [
-            per_channel(x.T, self.coefficients, non_causal=False, rate=1)
+            per_channel(x.T, self.coefficients, non_causal=False, rate=1).T
             for x in inputs
             ]
         return output
@@ -151,7 +157,7 @@ class STRF(FIR):
 # DELETE ME when no longer needed for testing
 
 
-from itertools import chain
+
 
 def get_zi(b, x):
     # This is the approach NARF uses. If the initial value of x[0] is 1,
@@ -264,3 +270,239 @@ def per_channel(x, coefficients, bank_count=1, non_causal=0, rate=1,
             r, zf = scipy.signal.lfilter(c, [1], x_, zi=zi)
             out[i_out] += r
     return out
+
+
+##### COPY WITH MY NOTES
+def evaluate(self, *inputs):
+    """Convolve `FIR.coefficients` with input(s).
+
+    TODO: need to pick a convolution implementation (see notes in function)
+    
+    """
+    # TODO: this just points to the old code for now, but the subroutines
+    #       work on array data so should work without much modification
+    #       in the meantime.
+
+
+    # TODO: ask Stephen about this. Still wasn't clear on the purpose so I
+    #       tried it out with some random data, and for a wide range of
+    #       input lengths and filter sizes it just ends up creating a vector
+    #       of zeros with length one less than the filter channel. So why not
+    #       just do that directly? Are there special edge cases where something
+    #       different happens?
+    def _get_zi(b, x):
+        # This is the approach NARF uses. If the initial value of x[0] is 1,
+        # this is identical to the NEMS approach. We need to provide zi to
+        # lfilter to force it to return the final coefficients of the dummy
+        # filter operation.
+
+        # b is one channel of the filter, so this is number of time points
+        n_taps = len(b)   
+        # all zeros, twice the length of the filter
+        null_data = np.zeros(shape=(n_taps*2,))
+        zi = np.ones(n_taps-1)
+
+        # TODO: I still don't understand what this accomplishes...
+        #       looks like docs for `scipy.signal.lfilter_zi` might be relevant?
+        return scipy.signal.lfilter(b, [1], null_data, zi=zi)[1]
+
+    # TODO: see notes below regarding rate. When would some one want to use
+    #       this? need to either cut it or be able to document.
+    #       Also would need refactor since old nems used different shape
+    #       for coefficients
+    def __insert_zeros(coefficients, rate=1):
+        if rate<=1:
+            return coefficients
+
+        d1 = int(np.ceil((rate-1)/2))
+        d0 = int(rate-1-d1)
+        s = coefficients.shape
+        new_c = np.concatenate((np.zeros((s[0],s[1],d0)),
+                                np.expand_dims(coefficients, axis=2),
+                                np.zeros((s[0],s[1],d1))), axis=2)
+        new_c = np.reshape(new_c, (s[0],s[1]*rate))
+        return new_c
+
+
+    # TODO: clarify language on "bank" vs "filter". I'd rather just get rid
+    #       of the bank terminology, I don't think it's necessary at this
+    #       level (e.g. what this code refers to as "one bank -> many filters"
+    #       can just as easily be referred to as "one filter -> many channels",
+    #       esp. if we switch from the lfilter method. Bank in that case would
+    #       be used for an higher level of organiziation that doesn't exist
+    #       (yet) here.
+    def _per_channel(input, coefficients, bank_count=1, non_causal=0, rate=1,
+                    cross_channels=False):
+        """Private function used by fir_filter().
+
+        TODO: this assumes a specific ordering of axes of input, add option
+                to make this more general (e.g. input_axis=i).
+                Similar issue for WeightChannels.
+
+
+        Parameters
+        ----------
+        x : array (n_channels, n_times) or (n_channels * bank_count, n_times)
+            Input data. Can be sized two different ways:
+            option 1: number of input channels is same as total channels in the
+            filterbank, allowing a different stimulus into each filter
+            option 2: number of input channels is same as number of coefficients
+            in each fir filter, so that the same stimulus goes into each
+            filter
+        coefficients : array (n_channels * bank_count, n_taps)
+            Filter coefficients. For ``x`` option 2, input channels are nested in
+            output channel, i.e., filter ``filter_i`` of bank ``bank_i`` is at
+            ``coefficients[filter_i * n_banks + bank_i]``.
+        bank_count : int
+            Number of filters in each bank.
+        rate : int
+            TODO: What does this do?
+            Looks like it puts `rate-1` zeros between coefficients
+            (e.g. rate=3 with a shape=(N,15) filter ends up as
+                `[0, x1, 0, 0, x2, 0, 0, x3, ... x14, 0, 0, x15, 0])
+            But why? What is this for?
+        non_causal : int
+            TODO: what does this do?
+        cross_channels : bool
+            TODO: what does this do?
+
+        Returns
+        -------
+        ndarray (bank_count, n_times)
+
+        """
+        n_channels, n_times, n_filters = self.coefficients.shape
+
+        # TODO: part 2. Ah... old nems is actually multiplying the number
+        #       of filters by the number of channels to form fir.coefficients,
+        #       hence my confusion. E.g. for fir.4x15x70, coefficients.shape[0]
+        #       in old nems would be (280,15) instead of (4,15,70).
+        n_banks = int(n_channels / bank_count)
+
+        # TODO: this should probably just be its own subclass with a
+        #       corresponding option in the keyword. Looks like it's doing
+        #       the full operation but in a different way.
+        if cross_channels:
+            # option 0: user has specified that each filter should be applied to
+            # each input channel (requires bank_count==1)
+            # TODO : integrate with core loop below instead of pasted hack
+            out = np.zeros((n_channels*n_channels, input.shape[1]))
+            i_out=0
+            for i_in in range(n_channels):
+                input_ = input[i_in]
+                for i_bank in range(n_channels):
+                    c = coefficients[i_bank]
+                    zi = _get_zi(c, input_)
+                    r, zf = scipy.signal.lfilter(c, [1], input_, zi=zi)
+                    out[i_out] = r
+                    i_out+=1
+            return out
+
+
+        # NOTE: okay... so I guess n_filters is referring to the number of
+        #       channels in what I would refer to as a single filter. E.g.
+        #       I think of (4x15) as a single filter, but this is referring
+        #       to it as four (1x15) filters. Is there an important reason
+        #       this terminology is used or does it just happen to be the
+        #       norm for a certain context?
+        elif n_channels == n_channels:
+            # option 1: number of input channels is same as total channels in the
+            # filterbank, allowing a different stimulus (channel?) into each filter
+            all_inputs = iter(input)
+
+
+        # TODO: Might be worth making this a separate subclass similar to
+        #       option 0 above, to organize the code a little better. The
+        #       The filtering operation is the same, but this is still a
+        #       fundamenally different use of the Layer if i'm understanding
+        #       correctly.
+        elif n_channels == n_channels * bank_count:
+            # option 2: number of input channels is same as number of coefficients
+            # in each fir filter, so that the same stimulus (channel?) goes into each
+            # filter
+            one_input = tuple(input)
+
+            # TODO: flattens channels and repeats bank_count times. E.g.
+            #       if input has shape (10000,18) and bank_count=2,
+            #       then all_inputs would have 36 entries each shape (10000,)
+            #       In other words, same stimulus gets used bank_count many times.
+
+            #       Again, what's the point of this vs just iterating over
+            #       indices?
+            all_inputs = chain.from_iterable([one_input for _ in range(bank_count)])
+        else:
+            if bank_count == 1:
+                desc = '%i FIR filters' % n_channels
+            else:
+                desc = '%i FIR filter banks' % n_banks
+            raise ValueError(
+                'Dimension mismatch. %s channels provided for %s.' % (n_channels, desc))
+
+
+        # TODO: Using iters to reduce memory load I guess? But the coefficients
+        # themselves should have minimal memory overhead, creating multiple
+        # copies of the input would be the memory-intensive part. So why not
+        # just... *not* generate copies of the input? The filter operation
+        # shouldn't be doing anything inplace, so why would copies be needed?
+        # Doesn't seem like this really has any benefit instead of just
+        # indexing into the existing arrays.
+        c_iter = iter(coefficients)
+        out = np.zeros((bank_count, input.shape[1]))
+
+        for i_out in range(bank_count):  # bank_count: n channels to use for each filtering operation
+            
+            for i_bank in range(n_banks):  # n_banks: number of filter channels / bank_count
+
+                # TODO: I guess it's done this way b/c lfilter only works
+                #       with 1D vectors? How important is it to use the
+                #       "slightly more correct" method? just using convolve()
+                #       would be more intuitive, and the speed increase
+                #       might be bigger as the input dimension increases?
+                #
+                #       Other advantage would be simplifying the logic here.
+                #       E.g. if using fir.4x15x70, will only work if input
+                #       has shape (4,T,70)  (or something along those lines),
+                #       so would still just be convolving a "single filter",
+                #       that happens to have a higher dimensional shape,
+                #       along the time axis of the input.
+                #
+                #       Actually, maybe that's not the case... reading
+                #       convolve() again, I think by N-dimensional arrays
+                #       they may have meant 1-D with N entries.
+                input_ = next(all_inputs)  # one channel of input -- (or not? See comment next to chain.from_iterable)
+                c = next(c_iter)           # one channel of filter
+
+                # NOTE: Second argument for roll is
+                #       "The number of places by which elements are shifted."
+                #       So this is shifting the input "backward" in time?...
+                #       Which I guess means the filter would be applied to
+                #       future time points. But this would also put the first
+                #       X time points at the end of the array instead. I guess
+                #       that doesn't matter for our data since there's surrounding
+                #       silence, but could be problematic for some data
+                #       (esp. if non_causal is large)
+                if non_causal > 0:
+                    # reverse model (using future values of input to predict)
+                    input_ = np.roll(input_, -non_causal)
+
+                # It is slightly more "correct" to use lfilter than convolve at
+                # edges, but but also about 25% slower (Measured on Intel Python
+                # Dist, using i5-4300M)
+                
+                # TODO: What's more "correct" about it?
+                # "initial conditions for filter delays" -- eh?
+                zi = _get_zi(c, input_)
+                # maybe should be using this instead? scipy.signal.lfilter_zi
+                r, zf = scipy.signal.lfilter(c, [1], input_, zi=zi)
+
+                # sum all channels from one filter
+                # (this step not necessary if switch to convolve())
+                out[i_out] += r
+
+        return out
+
+    output = [
+        _per_channel(x.T, self.coefficients, non_causal=False, rate=1)
+        for x in inputs
+        ]
+    return output
