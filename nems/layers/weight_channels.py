@@ -1,5 +1,3 @@
-import re
-
 import numpy as np
 
 from .base import Layer, Phi, Parameter
@@ -61,8 +59,8 @@ class WeightChannels(Layer):
     def coefficients(self):
         """Weighting matrix that will be applied to input.
         
-        Subclasses should overwrite this so that `evaluate` doesn't need
-        to change.
+        Re-parameterized subclasses should overwrite this so that `evaluate`
+        doesn't need to change.
 
         Returns
         -------
@@ -108,7 +106,6 @@ class WeightChannels(Layer):
         kwargs = {}
 
         options = keyword.split('.')
-        in_out_pattern = re.compile(r'^(\d{1,})x(\d{1,})$')
         for op in options:
             if ('x' in op) and (op[0].isdigit()):
                 dims = op.split('x')

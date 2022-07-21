@@ -469,7 +469,7 @@ class Model:
         # If so, split into list of keywords
         split = keywords[0].split('-')
         if len(split) > 1:
-            layers = split
+            keywords = split
         # Get Layer instances by invoking `Layer.from_keyword` through registry.
         layers = [keyword_lib[kw] for kw in keywords]
         return cls(layers=layers)
