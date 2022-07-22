@@ -136,7 +136,7 @@ class Layer:
 
         self.priors = priors
         self.bounds = bounds
-        self.name = name if name is not None else 'unnamed module'
+        self.name = name if name is not None else 'unnamed Layer'
         self.model = None  # pointer to parent ModelSpec
 
         if parameters is None:
@@ -1214,7 +1214,7 @@ class Parameter:
             one = np.ones(shape=self.shape)
             prior = Normal(mean=zero, sd=one)  
         self.prior = prior
-        if prior.shape != self.shape:
+        if tuple(prior.shape) != tuple(self.shape):
             raise ValueError(
                 "Parameter.shape != Parameter.prior.shape for...\n"
                 f"Parameter:       {self.name}\n"
