@@ -193,7 +193,8 @@ class Model:
                              **eval_kwargs)
 
     def fit(self, input, target=None, target_name=None, backend=None,
-            cost_function='mse', fitter_options=None, **eval_kwargs):
+            cost_function='mse', fitter_options=None, log_spacing=5,
+            **eval_kwargs):
         """Optimize model parameters to match `Model.predict(input)` to target.
         
         TODO: where do jackknife indices fit in? possibly use segmentor idea
@@ -233,6 +234,10 @@ class Model:
             If str  : Invoke `nems.metrics.get_metric(str)`.
             If func : Use this function to compute errors. Should accept two
                       array arguments and return float.
+        log_spacing : int; default=5.
+            Log progress of fitter every `log_spacing` iterations.
+            Note: this is the number of iterations, not the number of cost
+            function evaluations (of which there may be many per iteration). 
         fitter_options : dict or None
             Keyword arguments to pass on to the fitter. For a list of valid
             options, see documentation for `scipy.optimize.minimize`
@@ -255,19 +260,32 @@ class Model:
         if backend == 'scipy':
             # TODO: probably move this to a subroutine? will decide after
             #       sketching out more
-            def _scipy_cost_wrapper(parameter_vector, model, input, target,
-                                    cost_fn, eval_kwargs):
-                model.set_parameter_vector(parameter_vector, ignore_checks=True)
-                prediction = model.predict(input, **eval_kwargs)
-                cost = cost_fn(prediction, target)
+            def _scipy_cost_wrapper(_vector, _model, _input, _target,
+                                    _cost_function, _eval_kwargs):
+                _model.set_parameter_vector(_vector, ignore_checks=True)
+                _prediction = _model.predict(_input, **_eval_kwargs)
+                cost = _cost_function(_prediction, _target)
                 return cost
+
+            # TODO: better callback scheme, use logging
+            log_info = {'iteration': 0}
+            def _scipy_callback(_vector):
+                nonlocal log_info, log_spacing, input, target
+                if log_info['iteration'] % log_spacing == 0:
+                    # Shouldn't need to set parameter vector, that should have
+                    # been done by the optimization iteration.
+                    prediction = self.predict(input, **eval_kwargs)
+                    cost = cost_function(prediction, target)
+                    print(f"iteration {log_info['iteration']},"
+                          f" error is: {cost:.4f}")
+                log_info['iteration'] += 1
             
             initial_parameters = self.get_parameter_vector(as_list=True)
             bounds = self.get_bounds_vector(none_for_inf=True)
             cost_args = (self, input, target, cost_function, eval_kwargs)
             fit_result = scipy.optimize.minimize(
                 _scipy_cost_wrapper, initial_parameters, cost_args,
-                method='L-BFGS-B', **fitter_options
+                method='L-BFGS-B', callback=_scipy_callback, **fitter_options
             )
             improved_parameters = fit_result.x
             self.set_parameter_vector(improved_parameters)
@@ -496,11 +514,14 @@ class Model:
         string = header
         string += tilde_break
         string += attr_string
-        string += ".layers:\n\n\n\n"
+        string += ".layers:\n\n"
+        # Extra equal_breka above first layer, so that its heading looks the
+        # same as subsequent layers.
+        string += "="*32 + "\n"
         for i, layer in enumerate(self.layers):
             if i != 0:
                 # Add blank line between layers if more than one
-                string += '\n\n\n'
+                string += '\n'
             string += layer.__repr__()
         string += "\n" + tilde_break
 

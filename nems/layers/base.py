@@ -585,10 +585,10 @@ class Layer:
         self_only = ", ".join([f"{k}={v}" for k, v in self_dict.items()
                                if k not in layer_dict])
         header = f"{type(self).__name__}({self_only})\n"
-        equal_break = "="*32 + "\n"
-        string = header + equal_break
-        string += ".parameters:\n\n\n"
-        string += self.parameters.__repr__() + "\n"
+        equal_break = "="*32
+        string = header + equal_break + "\n"
+        string += ".parameters:\n\n"
+        string += self.parameters.__repr__()
         string += equal_break
         return string
 
