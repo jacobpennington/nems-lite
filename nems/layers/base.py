@@ -1101,9 +1101,10 @@ class Phi:
         }
         return data
 
-    def from_json(json):
+    @classmethod
+    def from_json(cls, json):
         """Decode Phi object from json. See `nems.tools.json`."""
-        phi = Phi(*json['args'])
+        phi = cls(*json['args'])
         for k, v in json['attributes'].items():
             setattr(phi, k, v)
         phi.freeze_parameters(json['frozen_parameters'])
@@ -1389,9 +1390,10 @@ class Parameter:
         }
         return data
 
-    def from_json(json):
+    @classmethod
+    def from_json(cls, json):
         """Decode Parameter object from json. See `nems.tools.json`."""
-        p = Parameter(**json['kwargs'])
+        p = cls(**json['kwargs'])
         for k, v in json['attributes'].items():
             setattr(p, k, v)
         return p
