@@ -354,6 +354,34 @@ class Layer:
             f'{self.__class__} has not defined a Tensorflow implementation.'
             )
 
+    def get_parameter_values(self, *parameter_keys, as_dict=False):
+        """Get all parameter values, formatted as a list or dict of arrays.
+
+        Parameters
+        ----------
+        parameter_keys : N-tuple of strings
+            Keys indicating which parameters to get values for. If no keys are
+            specified, all parameter values will be fetched.
+        as_dict : bool
+            If True, return a dict instead of a list with format
+            `{parameter_key : Layer.parameters[parameter_key].values}`.
+
+        Returns
+        -------
+        values : list or dict
+        
+        See also
+        --------
+        Phi.get_values
+        
+        """
+        if parameter_keys == ():
+            parameter_keys = self.parameters.keys()
+        values = self.parameters.get_values(*parameter_keys)
+        if as_dict:
+            values = {k: v for k, v in zip(parameter_keys, values)}
+        return values
+
     def set_parameter_values(self, parameter_dict):
         """Set new parameter values from key, value pairs.
         
@@ -361,16 +389,6 @@ class Layer:
 
         """
         self.parameters.update(parameter_dict)
-
-    def get_parameter_values(self, *parameter_keys):
-        """Get all parameter values, formatted as a list of arrays.
-        
-        See also
-        --------
-        Phi.get_values
-        
-        """
-        return self.parameters.get_values(*parameter_keys)
 
     def get_parameter_vector(self, as_list=True):
         """Get all parameter values, formatted as a single vector.

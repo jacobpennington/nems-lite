@@ -389,6 +389,43 @@ class Model:
                                        ignore_checks=ignore_checks)
             first_index = last_index
 
+    def get_parameter_values(self, *layer_keys):
+        """Get all parameter values, formatted as a dict.
+        
+        Parameters
+        ----------
+        layer_keys : N-tuple of strings
+            Keys indicating which Layers to get parameter values for. If no keys
+            are specified, get values for all layers.
+
+        Returns
+        -------
+        all_values : dict
+
+        See also
+        --------
+        nems.layers.base.Layer.get_parameter_values
+        
+        """
+        if layer_keys == ():
+            layer_keys = self._layers.keys()
+        all_values = {}
+        for k in layer_keys:
+            values = self.layers[k].get_parameter_values(as_dict=True)
+            all_values[k] = values
+        return all_values
+
+    def set_parameter_values(self, layer_dict):
+        """Set new parameter values from key, value pairs.
+        
+        See also
+        --------
+        nems.layers.base.Layer.set_parameter_values
+
+        """
+        for k, v in layer_dict.items():
+            self.layers[k].set_parameter_values(v)
+
     def sample_from_priors(self, inplace=True, as_vector=False):
         """Get or set new parameter values by sampling from priors.
         
