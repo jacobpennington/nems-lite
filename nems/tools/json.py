@@ -84,13 +84,13 @@ class NEMSEncoder(json.JSONEncoder):
         # has a corresponding `encode_{name}` method.
         # (This means NEMS objects can subclassed as many times as desired, and
         #  this method will still find the correct base class).
-        inheritance_list = inspect.getmro(obj.__class__)
+        inheritance_list = inspect.getmro(type(obj))
         for cls in inheritance_list:
             encoder = getattr(self, f"encode_{cls.__name__}", None)
             if encoder is not None:
                 encoded = encoder(obj)
                 encoded["__nems_json_type__"] = cls.__name__
-                encoded["__nems_json_subtype__"] = type(obj.__name__)
+                encoded["__nems_json_subtype__"] = inheritance_list[0].__name__
                 return encoded
         else:
             super().default(obj)
@@ -138,7 +138,9 @@ for cls in _NEMS_classes_to_encode:
 # Convenience functions so that front-end users don't need to remember to use
 # cls=NEMSEncoder/Decoder.
 def nems_to_json(obj):
-    json.dumps(obj, cls=NEMSEncoder)
+    """Encode `obj` as a json string. Supports ndarray and NEMS objects."""
+    return json.dumps(obj, cls=NEMSEncoder)
 
 def nems_from_json(obj):
-    json.loads(obj, cls=NEMSDecoder)
+    """Decode json `obj`. Supports ndarray and NEMS objects."""
+    return json.loads(obj, cls=NEMSDecoder)
