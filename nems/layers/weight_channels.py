@@ -1,3 +1,4 @@
+from re import S
 import numpy as np
 
 from .base import Layer, Phi, Parameter
@@ -159,10 +160,6 @@ class GaussianWeightChannels(WeightChannels):
 
         return parameters
 
-    # TODO: question for Stephen. Have we tried this with an added "vertical"
-    #       shift to allow negative coefficients at the edges? I.e. if peak of
-    #       gaussian is at BF, a narrowband sound would get big excitation but
-    #       broadband would get a reduced response.
     @property
     def coefficients(self):
         """Return N discrete gaussians with T bins, where `self.shape=(T,N)`.
