@@ -73,7 +73,8 @@ class KeywordRegistry:
 
     '''
 
-    def __init__(self, name='registry', warn_on_overwrite=True):
+    def __init__(self, name='registry', warn_on_overwrite=True,
+                 set_obj_name=False):
         """
         Parameters
         ----------
@@ -83,15 +84,22 @@ class KeywordRegistry:
         warn_on_overwrite : bool
             If True, raise a RuntimeWarning when a keyword is overwritten to
             help debug name clashes.
+        set_obj_name : bool
+            If true, set `obj.name = kw_head` during indexing.
 
         """
         self.keywords = {}
         self.name = name
         self.warn_on_overwrite = warn_on_overwrite
+        self.set_obj_name = set_obj_name
 
     def __getitem__(self, kw_string):
         kw = self.lookup(kw_string)
-        return kw.parse(kw_string)
+        obj = kw.parse(kw_string)
+        if self.set_obj_name:
+            kw_head = kw_string.split('.')[0]
+            obj.name = kw_head
+        return obj
 
     def __setitem__(self, kw_head, parse):
         if kw_head in self.keywords and self.warn_on_overwrite:
@@ -195,7 +203,9 @@ class KeywordRegistry:
 
 
 # Create registries here so they can be updated as new layers are imported.
-keyword_lib = KeywordRegistry(name="layers", warn_on_overwrite=True)
+keyword_lib = KeywordRegistry(
+    name="layers", warn_on_overwrite=True, set_obj_name=True
+    )
 
 def layer(name=None):
     """Decorator for `Layer.from_keyword()` methods.

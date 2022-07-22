@@ -118,7 +118,6 @@ class WeightChannels(Layer):
             raise ValueError("WeightChannels requires a shape, ex: `wc.18x4`")
 
         wc = wc_class(**kwargs)
-        wc.name = options[0]  # keyword head, 'wc'
 
         return wc
 

@@ -131,7 +131,6 @@ class FIR(Layer):
             raise ValueError("FIR requires a shape, ex: `fir.4x25`.")
 
         fir = FIR(**kwargs)
-        fir.name = options[0]  # keyword head, 'fir'
 
         return fir
 
