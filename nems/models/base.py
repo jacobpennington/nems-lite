@@ -12,16 +12,20 @@ del nems.layers
 
 
 class Model:
+    """TODO: docstring."""
+    # NOTE: there are hard-coded references to the names of these class attrs
+    # in `Model.from_json`. Be sure to update that method if these change.
     default_input = 'stimulus'
     default_output = 'prediction'
     default_state = 'state'
     default_backend = 'scipy'
 
-    def __init__(self, layers=None):
-        # TODO
+    def __init__(self, layers=None, name=None):
+        """TODO: docstring"""
         self._layers = {}  #  layer.name : layer obj, increment on clashes
         if layers is not None:
             self.add_layers(*layers)
+        self.name = name if name is not None else 'unnamed Model'
 
     @property
     def layers(self):
@@ -558,14 +562,52 @@ class Model:
 
     # Add compatibility for saving to json
     def to_json(self):
-        # TODO
-        # iterate layer.to_json + add metadata
-        pass
+        """Encode a Model as a dictionary.
 
-    def from_json(json):
-        # TODO
-        # store metadata, iterate layer.from_json and invoke add_layers
-        pass
+        TODO: after specifying some built-in Models (e.g. subclasses), determine
+              if `Model.<to/from>_json` need to be updated to support those.
+              As long as they're just adding specific Layers the base versions
+              should work, but not sure exactly how that's going to work yet.
+
+        Returns
+        -------
+        data : dict
+
+        See also
+        --------
+        `nems.tools.json`
+
+        """
+        # TODO: any other metadata?
+        data = {
+            'layers': list(self._layers.values()),
+            'name': self.name,
+            'defaults': {
+                'input': self.default_input, 'output': self.default_output, 
+                'state': self.default_state, 'backend': self.default_backend
+                }
+            }
+        
+        return data
+
+    @classmethod
+    def from_json(cls, json):
+        """Decode a Model from a dictionary.
+
+        Returns
+        -------
+        Model
+
+        See also
+        --------
+        `nems.tools.json`
+
+        """
+        # TODO: any other metadata?
+        model = cls(layers=json['layers'], name=json['name'])
+        for k, v in json['defaults'].items():
+            setattr(model, f"default_{k}", v)
+        return model
 
 
 class _LayerDict:

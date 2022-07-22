@@ -667,7 +667,7 @@ class Layer:
             # Subclass has overwritten `from_json`, use that method instead.
             layer = subclass.from_json()
         else:
-            layer = Layer(**json['kwargs'])
+            layer = subclass(**json['kwargs'])
             for k, v in json['attributes'].items():
                 setattr(layer, k, v)
 
@@ -1107,7 +1107,7 @@ class Phi:
         phi = cls(*json['args'])
         for k, v in json['attributes'].items():
             setattr(phi, k, v)
-        phi.freeze_parameters(json['frozen_parameters'])
+        phi.freeze_parameters(*json['frozen_parameters'])
         return phi
 
     def from_dict(dct, default_bounds='infinite'):
@@ -1203,7 +1203,7 @@ class Parameter:
 
         """
         self.name = name
-        self.shape = shape
+        self.shape = tuple(shape)
         self.size = 1
         for axis in shape:
             self.size *= axis
@@ -1214,7 +1214,7 @@ class Parameter:
             one = np.ones(shape=self.shape)
             prior = Normal(mean=zero, sd=one)  
         self.prior = prior
-        if tuple(prior.shape) != tuple(self.shape):
+        if prior.shape != self.shape:
             raise ValueError(
                 "Parameter.shape != Parameter.prior.shape for...\n"
                 f"Parameter:       {self.name}\n"
@@ -1384,9 +1384,7 @@ class Parameter:
                 'prior': self.prior,
                 'bounds': self.bounds
             },
-            'attributes': {
-                'is_frozen': self.is_frozen
-            }
+            'is_frozen': self.is_frozen
         }
         return data
 
@@ -1394,8 +1392,8 @@ class Parameter:
     def from_json(cls, json):
         """Decode Parameter object from json. See `nems.tools.json`."""
         p = cls(**json['kwargs'])
-        for k, v in json['attributes'].items():
-            setattr(p, k, v)
+        if json['is_frozen']:
+            p.freeze()
         return p
 
     def __repr__(self):
