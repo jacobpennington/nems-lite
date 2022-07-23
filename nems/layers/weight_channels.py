@@ -1,8 +1,9 @@
 from re import S
 import numpy as np
 
-from .base import Layer, Phi, Parameter
 from nems.registry import layer
+from nems.distributions import Normal, HalfNormal
+from .base import Layer, Phi, Parameter
 
 
 # TODO: double check all shape references after dealing w/ data order etc,
@@ -14,17 +15,13 @@ class WeightChannels(Layer):
 
         Parameters
         ----------
-        shape : 2-tuple
+        shape : N-tuple (usually N=2)
             Determines the shape of `WeightChannels.coefficients`.
             First dimension should match the spectral dimension of the input,
             second dimension should match the spectral dimension of the output.
             Note that higher-dimesional shapes are also allowed and should work
             as-is for this base class, but overall Layer design is intended for
             2-dimensional data so subclasses might not support other shapes.
-        parameters : Phi or None, optional
-            Specifies the value of each variable used to compute
-            `WeightChannels.evaluate()`. If `None`, values will be determined by
-            `WeightChannels.initial_parameters`.
         
         Returns
         -------
@@ -52,8 +49,18 @@ class WeightChannels(Layer):
             Prior:  TODO, currently using defaults
             Bounds: TODO
 
+        Returns
+        -------
+        nems.layers.base.Phi
+
         """
-        coefficients = Parameter(name='coefficients', shape=self.shape)
+        # Mean and sd for priors were chosen mostly arbitrarily, to start
+        # with most weights near zero (but not exactly at 0).
+        mean = np.full(shape=self.shape, fill_value=0.01)
+        sd = np.full(shape=self.shape, fill_value=0.05)
+        coefficients = Parameter(
+            name='coefficients', shape=self.shape, prior=Normal(mean, sd)
+            )
         return Phi(coefficients)
 
     @property
@@ -143,18 +150,35 @@ class GaussianWeightChannels(WeightChannels):
             Mean of gaussian, shape is (N_outputs,).
             Prior:  TODO  # Currently using defaults
             Bounds: (0, 1)
-
-        std : scalar or ndarray
+        sd : scalar or ndarray
             Standard deviation of gaussian, shape is (N_outputs,).
             Prior:  TODO  # Currently using defaults
             Bounds: (0, np.inf)
 
+        Returns
+        -------
+        nems.layers.base.Phi
+
         """
         _, n_output_channels = self.shape
         shape = (n_output_channels,)
+        # Pick means so that the centers of the gaussians are spread across the 
+        # available frequencies.
+        channels = np.arange(n_output_channels + 1)[1:]
+        tiled_means = channels / (n_output_channels*2 + 2) + 0.25
+        mean_priors = {
+            'mean': tiled_means,
+            'sd': np.full_like(tiled_means, 0.2)  # mostly arbitrary
+        }
+        sd_priors = {
+            'sd': np.full_like(tiled_means, 0.4)  # mostly arbitrary
+        }
+
         parameters = Phi(
-            Parameter(name='mean', shape=shape, bounds=(0, 1)),
-            Parameter(name='std', shape=shape, bounds=(0, np.inf))
+            Parameter(name='mean', shape=shape, bounds=(0, 1),
+                      prior=Normal(**mean_priors)),
+            Parameter(name='sd', shape=shape, bounds=(0, np.inf),
+                      prior=HalfNormal(**sd_priors))
             )
 
         return parameters
@@ -163,17 +187,17 @@ class GaussianWeightChannels(WeightChannels):
     def coefficients(self):
         """Return N discrete gaussians with T bins, where `self.shape=(T,N)`.
         
-        # TODO: add axis_X = Y options to make this not assume 
+        # TODO: add axis_X = Y options to make this not assume specific order
         
         """
         mean = self.parameters['mean'].values
-        std = self.parameters['std'].values
+        sd = self.parameters['sd'].values
         n_input_channels, _ = self.shape
 
         x = np.arange(n_input_channels)/n_input_channels
         mean = np.asanyarray(mean)[..., np.newaxis]
-        std = np.asanyarray(std)[..., np.newaxis]
-        coefficients = np.exp(-0.5*((x-mean)/std)**2).T
+        sd = np.asanyarray(sd)[..., np.newaxis]
+        coefficients = np.exp(-0.5*((x-mean)/sd)**2).T
 
         # Normalize by the cumulative sum for each channel
         cumulative_sum = np.sum(coefficients, axis=1, keepdims=True)

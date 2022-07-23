@@ -41,6 +41,10 @@ class FIR(Layer):
             Prior:  TODO, currently using defaults
             Bounds: TODO
 
+        Returns
+        -------
+        nems.layers.base.Phi
+
         """
         coefficients = Parameter(name='coefficients', shape=self.shape)
         return Phi(coefficients)
