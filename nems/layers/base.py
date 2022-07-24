@@ -382,13 +382,24 @@ class Layer:
             values = {k: v for k, v in zip(parameter_keys, values)}
         return values
 
-    def set_parameter_values(self, parameter_dict):
+    def set_parameter_values(self, *parameter_dict, ignore_bounds=False,
+                             **parameter_kwargs):
         """Set new parameter values from key, value pairs.
-        
-        Alias for `Layer.update`.
+
+        Parameters
+        ----------
+        parameter_dict : dict; optional
+            Dictionary containing key-value pairs, where each key is the name
+            of a parameter and each value is the new value for that parameter.
+        ignore_bounds : bool
+            If True, ignore `Parameter.bounds` when setting new values
+            (not usually recommended, but useful for testing).
+        parameter_kwargs : key-value pairs.
+            As `parameter_dict`.
 
         """
-        self.parameters.update(parameter_dict)
+        self.parameters.update(*parameter_dict, ignore_bounds=ignore_bounds,
+                               **parameter_kwargs)
 
     def get_parameter_vector(self, as_list=True):
         """Get all parameter values, formatted as a single vector.
@@ -530,6 +541,10 @@ class Layer:
         """
         self.parameters.unfreeze_parameters(*parameter_keys)
 
+    def set_permanent_values(self, *parameter_dict, **parameter_kwargs):
+        """Set parameters to fixed values. The parameters will not unfreeze."""
+        self.parameters.set_permanent_values(*parameter_dict, **parameter_kwargs)
+
     def set_index(self, i, new_index='initial'):
         """Change which set of parameter values is referenced.
 
@@ -574,13 +589,13 @@ class Layer:
         """Set Parameter.values (not Parameter itself)."""
         self.parameters[key] = val
 
-    def update(self, dct):
+    def update(self, *args, **kwargs):
         """Update Parameter values (not the Parameters themselves).
         
         Alias for `Layer.set_parameter_values`.
 
         """
-        self.parameters.update(dct)
+        self.set_parameter_values(*args, **kwargs)
 
     def __iter__(self):
         return self.parameters.__iter__()
@@ -965,6 +980,17 @@ class Phi:
                 p.unfreeze()
         self._update_vector_mask()
 
+    def set_permanent_values(self, *dct, **kwargs):
+        """Set parameters to fixed values. The parameters will not unfreeze."""
+        if dct != ():
+            _dct = dct[0]
+        else:
+            _dct = kwargs
+        for k, v in _dct.items():
+            p = self._dict[k]
+            p.update(v)
+            p.make_permanent()
+
     def sample(self, inplace=False, as_vector=True):
         """Get or set new parameter values by sampling from priors.
         
@@ -1070,10 +1096,14 @@ class Phi:
     def get_values(self, *keys):
         return [self._dict[k].values for k in keys]
 
-    def update(self, dct):
+    def update(self, *dct, ignore_bounds=False, **kwargs):
         """Update Parameter values (not the Parameters themselves)."""
-        for k, v in dct.items():
-            self._dict[k].update(v)   
+        if dct != ():
+            _dct = dct[0]
+        else:
+            _dct = kwargs
+        for k, v in _dct.items():
+            self._dict[k].update(v, ignore_bounds=ignore_bounds)
 
     def __setitem__(self, key, val):
         """Update Parameter value (not the Parameters itself)."""
@@ -1279,6 +1309,7 @@ class Parameter:
         self.last_index = None
 
         self.is_frozen = False
+        self.is_permanent = True
     
     # TODO: any other tracking/upkeep that needs to happen with
     #       freezing/unfreezing, or is the flag sufficient?
@@ -1288,7 +1319,13 @@ class Parameter:
 
     def unfreeze(self):
         """Make parameter values optimizable."""
-        self.is_frozen = False
+        if not self.is_permanent:
+            self.is_frozen = False
+
+    def make_permanent(self):
+        """Set parameter to a fixed value, and do not unfreeze."""
+        self.freeze()
+        self.is_permanent = True
 
     @property
     def is_fittable(self):
@@ -1402,7 +1439,8 @@ class Parameter:
                 'prior': self.prior,
                 'bounds': self.bounds
             },
-            'is_frozen': self.is_frozen
+            'is_frozen': self.is_frozen,
+            'is_permanent': self.is_permanent
         }
         return data
 
@@ -1410,7 +1448,9 @@ class Parameter:
     def from_json(cls, json):
         """Decode Parameter object from json. See `nems.tools.json`."""
         p = cls(**json['kwargs'])
-        if json['is_frozen']:
+        if json['is_permanent']:
+            p.make_permanent()
+        elif json['is_frozen']:
             p.freeze()
         return p
 
