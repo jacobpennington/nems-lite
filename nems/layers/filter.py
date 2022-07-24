@@ -145,12 +145,8 @@ class FIR(Layer):
         return data
 
 
-class STRF(FIR):
-    # TODO: I guess this is really the same as FIR, just with an expectation
-    #       that the shape matches the full spectrogram.
-    #       (and none of the re-parameterized subclasses would be supported)
-    pass
-
+# Optional alias to use when FIR is applied to the full spectrogram.
+STRF = FIR
 
 
 ###############################################################################

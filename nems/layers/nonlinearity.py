@@ -1,3 +1,4 @@
+from tkinter import FALSE
 import numpy as np
 
 from nems.registry import layer
@@ -131,3 +132,56 @@ class DoubleExponential(StaticNonlinearity):
                 shape = tuple([int(d) for d in dims])
         
         return DoubleExponential(shape=shape)
+
+
+class RectifiedLinear(StaticNonlinearity):
+    def initial_parameters(self):
+        """Get initial values for `RectifiedLinear.parameters`.
+        
+        Layer parameters
+        ----------------
+        shift : scalar or ndarray
+            Value(s) that are added to input(s) prior to rectification. Shape
+            (N,) must match N channels per input.
+            Prior:  Normal(mean=-0.1, sd=1/sqrt(N))
+        
+        """
+        # TODO: explain choice of prior.
+        zero = np.zeros(shape=self.shape)
+        one = np.ones(shape=self.shape)
+        prior = {'mean': zero-0.1, 'sd': one/np.sqrt(self.shape[0])}
+        phi = Phi(Parameter('shift', shape=self.shape, prior=Normal(**prior)))
+
+        return phi
+
+    def nonlinearity(self, *inputs):
+        """Set input values to 0 if <= `-1*shift`.
+        
+        Notes
+        -----
+        The negative of `shift` is used so that its interpretation in
+        `StaticNonlinearity.evaluate` is the same as for other subclasses.
+        
+        """
+        # TODO: add ability to mulitply Parameter by scalar
+        return [x * (x > -self.parameters['shift'].values) for x in inputs]
+
+    @layer('relu')
+    def from_keyword(keyword):
+        options = keyword.split('.')
+        no_shift = False
+        for op in options[1:]:
+            if op[0].isdigit():
+                dims = op.split('x')
+                shape = tuple([int(d) for d in dims])
+            elif op == 'f':
+                no_shift = True
+
+        relu = RectifiedLinear(shape=shape)
+        if no_shift:
+            relu.set_permanent_values(shift=0)
+
+        return relu
+
+# Optional alias
+ReLU = RectifiedLinear
