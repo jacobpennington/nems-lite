@@ -568,6 +568,11 @@ class Model:
 
         return string
 
+    def __getitem__(self, key):
+        if isinstance(key, (str, int, slice)):
+            key = tuple([key])
+        return self.layers.get(*key)
+
     @classmethod
     def from_keywords(cls, *keywords):
         """Construct a Model from a list of keywords or a model string.
@@ -695,6 +700,8 @@ class _LayerDict:
         # no keys, get all layers
         if keys == ():
             layers = self._values
+        elif isinstance(keys[0], slice):
+            layers = self._values[keys[0]]
         else:
             container = self._container_for(keys[0])
             layers = []
