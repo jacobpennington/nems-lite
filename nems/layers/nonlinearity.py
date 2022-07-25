@@ -49,6 +49,64 @@ class StaticNonlinearity(Layer):
         return inputs
 
 
+class LevelShift(StaticNonlinearity):
+    """Applies a scalar shift to each input channels.
+    
+    Notes
+    -----
+    While `LevelShift.evaluate` is linear, this Layer is grouped with
+    `StaticNonlinearity` because of its close relation to these other layers.
+    In short, we have found in the past that it is often helpful to "turn off"
+    a nonlinearity during fitting, but still shift the input.
+    
+    """
+
+    def initial_parameters(self):
+        """Get initial values for `StaticNonlinearity.parameters`.
+        
+        Layer parameters
+        ----------------
+        shift : scalar or ndarray
+            Value(s) that are added to input(s) prior to rectification. Shape
+            (N,) must match N channels per input.
+            Prior:  TODO
+        
+        """
+        # TODO: explain choice of priors.
+        prior = Normal(
+            np.zeros(shape=self.shape), 
+            np.ones(shape=self.shape)/100
+            )
+
+        shift = Parameter('shift', shape=self.shape, prior=prior)
+        return Phi(shift)
+
+    @layer('lvl')
+    def from_keyword(keyword):
+        """Construct LevelShift from a keyword.
+
+        Keyword options
+        ---------------
+        {digit}x{digit}x ... x{digit} : N-dimensional shape.
+
+        Returns
+        -------
+        LevelShift
+
+        See also
+        --------
+        Layer.from_keyword
+
+        """
+        options = keyword.split('.')
+        for op in options[1:]:
+            if op[0].isdigit():
+                dims = op.split('x')
+                shape = tuple([int(d) for d in dims])
+
+        return StaticNonlinearity(shape=shape)
+
+
 class DoubleExponential(StaticNonlinearity):
 
     def initial_parameters(self):
@@ -119,6 +177,10 @@ class DoubleExponential(StaticNonlinearity):
         ---------------
         {digit}x{digit}x ... x{digit} : N-dimensional shape.
 
+        Returns
+        -------
+        DoubleExponential
+
         See also
         --------
         Layer.from_keyword
@@ -135,6 +197,7 @@ class DoubleExponential(StaticNonlinearity):
 
 
 class RectifiedLinear(StaticNonlinearity):
+
     def initial_parameters(self):
         """Get initial values for `RectifiedLinear.parameters`.
         
@@ -168,6 +231,21 @@ class RectifiedLinear(StaticNonlinearity):
 
     @layer('relu')
     def from_keyword(keyword):
+        """Construct RectifiedLinear from a keyword.
+
+        Keyword options
+        ---------------
+        {digit}x{digit}x ... x{digit} : N-dimensional shape.
+
+        Returns
+        -------
+        RectifiedLinear
+
+        See also
+        --------
+        Layer.from_keyword
+
+        """
         options = keyword.split('.')
         no_shift = False
         for op in options[1:]:

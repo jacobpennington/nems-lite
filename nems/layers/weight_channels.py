@@ -58,8 +58,10 @@ class WeightChannels(Layer):
         # with most weights near zero (but not exactly at 0).
         mean = np.full(shape=self.shape, fill_value=0.01)
         sd = np.full(shape=self.shape, fill_value=0.05)
+        prior = Normal(mean, sd)
+
         coefficients = Parameter(
-            name='coefficients', shape=self.shape, prior=Normal(mean, sd)
+            name='coefficients', shape=self.shape, prior=prior
             )
         return Phi(coefficients)
 
@@ -160,25 +162,24 @@ class GaussianWeightChannels(WeightChannels):
         nems.layers.base.Phi
 
         """
+
+        mean_bounds = (0, 1)
+        sd_bounds = (0, np.inf)
+        
         _, n_output_channels = self.shape
         shape = (n_output_channels,)
         # Pick means so that the centers of the gaussians are spread across the 
         # available frequencies.
         channels = np.arange(n_output_channels + 1)[1:]
         tiled_means = channels / (n_output_channels*2 + 2) + 0.25
-        mean_priors = {
-            'mean': tiled_means,
-            'sd': np.full_like(tiled_means, 0.2)  # mostly arbitrary
-        }
-        sd_priors = {
-            'sd': np.full_like(tiled_means, 0.4)  # mostly arbitrary
-        }
-
+        mean_prior = Normal(tiled_means, np.full_like(tiled_means, 0.2))
+        sd_prior = HalfNormal(np.full_like(tiled_means, 0.4))
+            
         parameters = Phi(
-            Parameter(name='mean', shape=shape, bounds=(0, 1),
-                      prior=Normal(**mean_priors)),
-            Parameter(name='sd', shape=shape, bounds=(0, np.inf),
-                      prior=HalfNormal(**sd_priors))
+            Parameter(name='mean', shape=shape, bounds=mean_bounds,
+                      prior=mean_prior),
+            Parameter(name='sd', shape=shape, bounds=sd_bounds,
+                      prior=sd_prior)
             )
 
         return parameters
