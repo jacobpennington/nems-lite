@@ -134,14 +134,21 @@ class Layer:
         self.input = input
         self.output = output
 
-        self.priors = priors
-        self.bounds = bounds
+        self.initial_priors = priors
+        self.initial_bounds = bounds
         self.name = name if name is not None else 'unnamed Layer'
         self.model = None  # pointer to parent ModelSpec
 
         if parameters is None:
             parameters = self.initial_parameters()
         self.parameters = parameters
+
+        # Overwrite defaults set by `initial_parameters` if priors, bounds
+        # kwargs were specified.
+        if priors is not None:
+            self.set_priors(**priors)
+        if bounds is not None:
+            self.set_bounds(**bounds)
 
         # If string, `state_name` will be interpreted as the name of an argument
         # for `Layer.evaluate`. During Model evaluation, if `Layer.input` is
@@ -458,6 +465,40 @@ class Layer:
 
         """
         return self.parameters.get_bounds(none_for_inf=none_for_inf)
+
+    @property
+    def bounds(self):
+        """Get all parameter bounds, as a dict with one key per Parameter."""
+        return self.parameters.bounds
+    
+    def set_bounds(self, *parameter_dict, **parameter_kwargs):
+        """Set all parameter bounds fromm key-value pairs.
+        
+        Warnings
+        --------
+        This can force the current `Parameter.values` out of bounds. To ensure
+        valid values, a subsequent `Parameter.sample` or `Parameter.mean` is
+        recommended.
+
+        """
+        self.parameters.set_bounds(*parameter_dict, **parameter_kwargs)
+
+    @property
+    def priors(self):
+        """Get all parameter priors, as a dict with one key per Parameter."""
+        return self.priors.bounds
+
+    def set_priors(self, *parameter_dict, **parameter_kwargs):
+        """Set all parameter bounds fromm key-value pairs.
+        
+        Warnings
+        --------
+        This can force the current `Parameter.values` to be outside the range
+        of `Parameter.prior`. To ensure valid values, a subsequent
+        `Parameter.sample` or `Parameter.mean` is recommended.
+
+        """
+        self.parameters.set_priors(*parameter_dict, **parameter_kwargs)
 
     def sample_from_priors(self, inplace=True, as_vector=False):
         """Get or set new parameter values by sampling from priors.
@@ -865,6 +906,50 @@ class Phi:
             bounds = subbed_bounds
         
         return bounds
+
+    @property
+    def bounds(self):
+        """Get all parameter bounds, as a dict with one key per Parameter."""
+        return {k: v.bounds for k, v in self._dict.items()}
+
+    def set_bounds(self, *dct, **kwargs):
+        """Set all parameter bounds fromm key-value pairs.
+        
+        Warnings
+        --------
+        This can force the current `Parameter.values` out of bounds. To ensure
+        valid values, a subsequent `Parameter.sample` or `Parameter.mean` is
+        recommended.
+
+        """
+        if dct != ():
+            _dct = dct[0]
+        else:
+            _dct = kwargs
+        for k, v in _dct.items():
+            self._dict[k].bounds = v
+
+    @property
+    def priors(self):
+        """Get all parameter priors, as a dict with one key per Parameter."""
+        return {k: v.priors for k, v in self._dict.items()}
+    
+    def set_priors(self, *dct, **kwargs):
+        """Set all parameter bounds fromm key-value pairs.
+        
+        Warnings
+        --------
+        This can force the current `Parameter.values` to be outside the range
+        of `Parameter.prior`. To ensure valid values, a subsequent
+        `Parameter.sample` or `Parameter.mean` is recommended.
+
+        """
+        if dct != ():
+            _dct = dct[0]
+        else:
+            _dct = kwargs
+        for k, v in _dct.items():
+            self._dict[k].priors = v
 
     def within_bounds(self, vector):
         """False if anywhere `vector < bounds[0]` or `vector > bounds[1]`."""
