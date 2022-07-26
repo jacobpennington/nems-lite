@@ -1600,16 +1600,31 @@ class Parameter:
             for x in inputs
             ]
         output = f(*subbed_inputs, **kwargs)
-
         return output
-
-    def __len__(self):
-        return len(self.values)
-
-    def __iter__(self):
-        return self.values.__iter__()
 
     @property
     def T(self):
         # np.transpose() works without this, but have to add .T separately.
         return self.values.T
+
+    # Pass through iteration and math operators to `Parameter.values`.
+    def __len__(self):
+        return self.values.__len__()
+    def __iter__(self):
+        return self.values.__iter__()
+    def __add__(self, other):
+        return self.values.__add__(other)
+    def __sub__(self, other):
+        return self.values.__sub__(other)
+    def __mul__(self, other):
+        return self.values.__mul__(other)
+    def __matmul__(self, other):
+        return self.values.__matmul__(other)
+    def __truediv__(self, other):
+        return self.values.__truediv__(other)
+    def __floordiv__(self, other):
+        return self.values.__floordiv__(other)
+    def __mod__(self, other):
+        return self.values.__mod__(other)
+    def __divmod__(self, other):
+        return self.values.__divmod__(other)

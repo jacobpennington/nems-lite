@@ -718,9 +718,7 @@ class Model:
 
     # Placed this code next to `_LayerDict` for easier cross-checking of code
     def __getitem__(self, key):
-        if isinstance(key, (str, int, slice)):
-            key = tuple([key])
-        return self.layers.get(*key)
+        return self.layers[key]
 
     def __len__(self):
         """Define `len(Model) = <number of layers in the Model>`."""
@@ -768,11 +766,12 @@ class _LayerDict:
         return container
 
     def __getitem__(self, keys):
-        if not isinstance(keys, tuple):
-            # only one argument, wrap it
-            keys = [keys]
-        layers = itemgetter(*keys)(self._container_for(keys[0]))
-        return layers
+        if isinstance(keys, (str, int, slice)):
+            keys = tuple([keys])
+        value = self.get(*keys, default=None)
+        if value is None:
+            raise KeyError(keys)
+        return value
 
     def get(self, *keys, default=None):
         # no keys, get all layers
