@@ -32,6 +32,16 @@ class Model:
         """Get all Model Layers. Supports integer or string indexing."""
         return _LayerDict(self._layers)
 
+    @property
+    def bounds(self):
+        """Get all Model bounds as a dict. See `Layer.bounds`."""
+        return {k: v.bounds for k, v in self.layers.items()}
+
+    @property
+    def priors(self):
+        """Get all Model priors as a dict. See `Layer.priors`."""
+        return {k: v.priors for k, v in self.layers.items()}
+
     def add_layers(self, *layers):
         """Add Layers to this Model, stored in `Model._layers`.
 
@@ -388,20 +398,10 @@ class Model:
         nems.layers.base.Layer.get_bounds_vector
 
         """
-        # collect all bounds
-        boundses = []
-        for layer in self.layers:
-            bounds = layer.get_bounds_vector(none_for_inf=none_for_inf)
-            boundses.append(bounds)
-
-        # flatten list
-        bounds = sum(boundses, [])
-        #lower = [b[0] for b in boundses]
-        #upper = [b[1] for b in boundses]
-
-        #model_bounds = [t for bounds in boundses for t in bounds]
-
-        return bounds  #model_bounds
+        # collect all bounds, flatten the intermediate bounds lists
+        bounds = [b for layer in self.layers for b in
+                  layer.get_bounds_vector(none_for_inf=none_for_inf)]
+        return bounds
 
     def get_parameter_vector(self, as_list=True):
         """Get all parameter values, formatted as a single vector.

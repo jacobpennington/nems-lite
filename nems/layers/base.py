@@ -466,12 +466,7 @@ class Layer:
         Phi.get_bounds
 
         """
-        bounds = self.parameters.get_bounds(none_for_inf=none_for_inf)
-
-        #lower = [b[0] for b in bounds]
-        #upper = [b[1] for b in bounds]
-
-        return bounds
+        return self.parameters.get_bounds_vector(none_for_inf=none_for_inf)
 
     @property
     def bounds(self):
@@ -493,7 +488,7 @@ class Layer:
     @property
     def priors(self):
         """Get all parameter priors, as a dict with one key per Parameter."""
-        return self.priors.bounds
+        return self.parameters.priors
 
     def set_priors(self, *parameter_dict, **parameter_kwargs):
         """Set all parameter bounds fromm key-value pairs.
@@ -886,7 +881,7 @@ class Phi:
             vector = vector.tolist()
         return vector
 
-    def get_bounds(self, none_for_inf=True):
+    def get_bounds_vector(self, none_for_inf=True):
         """Return a list of bounds from each parameter in `Phi._dict`.
         
         Parameters
@@ -900,29 +895,9 @@ class Phi:
         bounds : list of 2-tuples
         
         """
-        bounds = [p.bounds for p in self._dict.values()]
-        sizes = [p.values.size for p in self._dict.values()]
-
-        if none_for_inf:
-            subbed_bounds = []
-            for b in bounds:
-                lower, upper = b
-                if np.isinf(lower):
-                    lower = None
-                if np.isinf(upper):
-                    upper = None
-                subbed_bounds.append((lower, upper))
-            bounds = subbed_bounds
-
-        bounds_new = []
-        for b, s in zip(bounds, sizes):
-            if type(b[0]) is not np.array:
-                bounds_new.extend([b]*s)
-                #bounds_new.append((np.repeat(np.array(b[0]), s), np.repeat(np.array(b[1]), s)))
-            else:
-                bounds_new.append(b)
-        bounds =  bounds_new
-
+        # Flatten the list returned by each Parameter
+        bounds = [b for p in self._dict.values()
+                  for b in p.get_bounds_vector(none_for_inf=none_for_inf)]
         return bounds
 
     @property
@@ -950,7 +925,7 @@ class Phi:
     @property
     def priors(self):
         """Get all parameter priors, as a dict with one key per Parameter."""
-        return {k: v.priors for k, v in self._dict.items()}
+        return {k: v.prior for k, v in self._dict.items()}
     
     def set_priors(self, *dct, **kwargs):
         """Set all parameter bounds fromm key-value pairs.
@@ -969,26 +944,11 @@ class Phi:
         for k, v in _dct.items():
             self._dict[k].priors = v
 
-    def within_bounds(self, vector):
-        """False if anywhere `vector < bounds[0]` or `vector > bounds[1]`."""
-        passed = True
-        bounds = self.get_bounds(none_for_inf=False)
-        vals = self._dict.values()
-        lower = np.concatenate([np.repeat(b[0], np.size(v)) for b, v in zip(bounds,vals)])
-        upper = np.concatenate([np.repeat(b[1], np.size(v)) for b, v in zip(bounds,vals)])
-        #upper = np.array([b[1] for b in zip(bounds,vals)])
-        if np.any(vector < lower) or np.any(vector > upper):
-            passed = False
-        return passed
-
     def get_indices_outof_range(self, vector, as_bool=True):
         """Get indices where `vector < bounds[0]` or `vector > bounds[1]`."""
-        bounds = self.get_bounds(none_for_inf=False)
-        vals = self._dict.values()
-        lower = np.concatenate([np.repeat(b[0], np.size(v)) for b, v in zip(bounds,vals)])
-        upper = np.concatenate([np.repeat(b[1], np.size(v)) for b, v in zip(bounds,vals)])
-        #lower = np.array([b[0] for b in bounds])
-        #upper = np.array([b[1] for b in bounds])
+        bounds = self.get_bounds_vector(none_for_inf=False)
+        lower = np.array([b[0] for b in bounds])
+        upper = np.array([b[1] for b in bounds])
 
         if as_bool:
             indices = np.logical_or(vector < lower, vector > upper)
@@ -998,6 +958,10 @@ class Phi:
             indices = np.vstack([check_low, check_high]).flatten()
         
         return indices
+
+    def within_bounds(self, vector):
+        """False if anywhere `vector < bounds[0]` or `vector > bounds[1]`."""
+        return np.all(self.get_indices_outof_range(vector, as_bool=True))
 
     def set_vector(self, vector, ignore_checks=False):
         """Set values of `Phi._array` sliced at `Phi._index` to a new vector.
@@ -1551,6 +1515,29 @@ class Parameter:
             mask = self.phi._get_parameter_mask(self)
             self.phi._array[mask] = flat_value
 
+    def get_bounds_vector(self, none_for_inf=True):
+        """Get a list with one bounds copy per entry in `Parameter.values`.
+        
+        Parameters
+        ----------
+        none_for_inf : bool, default=True
+            If True, replace (+/-)`np.inf` with None for compatibility with
+            `scipy.optimize.minimize`.
+        
+        Returns
+        -------
+        bounds : list of 2-tuples
+        
+        """
+        bounds = self.bounds
+        if none_for_inf:
+            lower, upper = bounds
+            if np.isinf(lower):
+                lower = None
+            if np.isinf(upper):
+                upper = None
+            bounds = (lower, upper)
+        return [bounds] * self.size
 
     # Add compatibility for saving to .json    
     def to_json(self):
