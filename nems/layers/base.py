@@ -15,7 +15,9 @@ from nems.registry import layer
 from nems.distributions import Normal
 
 
-# TODO: add examples and tests
+# TODO: add more examples, and tests
+# TODO: add option to propagate other Parameter options from Layer.__init__,
+#       like `default_bounds` and `initial_value`.
 class Layer:
     """Encapsulates one data-transformation step of a NEMS Model.
 
