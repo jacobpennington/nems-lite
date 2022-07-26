@@ -5,9 +5,8 @@ Ex: `from nems.modules import WeightChannels, FIR, DoubleExponential`
 
 '''
 
-from .nonlinearity import DoubleExponential
+from .nonlinearity import DoubleExponential, LevelShift
 from .filter import FIR, STRF
 from .weight_channels import WeightChannels
-from .level_shift import LevelShift
 
 from .base import Phi, Parameter

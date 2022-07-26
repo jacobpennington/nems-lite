@@ -27,6 +27,15 @@ class Model:
             self.add_layers(*layers)
         self.name = name if name is not None else 'unnamed Model'
 
+    def __len__(self):
+        """Overloaded len.
+
+        Returns
+        -------
+        len: int: number of layers.
+        """
+        return len(self.layers)
+
     @property
     def layers(self):
         """Get all Model Layers. Supports integer or string indexing."""
@@ -63,7 +72,7 @@ class Model:
         raise NotImplementedError
 
     def evaluate(self, input, state=None, input_name=None, state_name=None,
-                 output_name=None, return_full_data=True):
+                 output_name=None, return_full_data=True, n=None):
         """Transform input(s) by invoking `Layer.evaluate` for each Layer.
 
         TODO: add more context, examples
@@ -99,6 +108,8 @@ class Model:
         return_full_data : bool; default=True
             If True, return a dictionary containing all input data and all
             uniquely-keyed Layer outputs.
+        n : int or None; default=None
+            If int, eval first n layers only
 
         Returns
         -------
@@ -128,17 +139,22 @@ class Model:
             # dictionary will end up with additional keys.
             data = input.copy()
 
+        if n is not None:
+            layers = list(self.layers)[:n]
+        else:
+            layers = self.layers
+
         # Set first input if None
-        all_inputs = [layer.input for layer in self.layers]
+        all_inputs = [layer.input for layer in layers]
         if all_inputs[0] is None:
             all_inputs[0] = input_name
         # Set last output if None
-        all_outputs = [layer.output for layer in self.layers]
+        all_outputs = [layer.output for layer in layers]
         if all_outputs[-1] is None:
             all_outputs[-1] = output_name
 
         # Loop through transformations
-        iter_zip = zip(self.layers, all_inputs, all_outputs)
+        iter_zip = zip(layers, all_inputs, all_outputs)
         for layer, next_input, next_output in iter_zip:
             if next_input is None:
                 # Use previous output
@@ -289,6 +305,7 @@ class Model:
             cost_args = (self, input, target, cost_function, eval_kwargs)
             fit_result = scipy.optimize.minimize(
                 _scipy_cost_wrapper, initial_parameters, cost_args,
+                bounds=bounds,
                 method='L-BFGS-B', callback=_scipy_callback, **fitter_options
             )
             improved_parameters = fit_result.x
@@ -328,10 +345,15 @@ class Model:
         for layer in self.layers:
             bounds = layer.get_bounds_vector(none_for_inf=none_for_inf)
             boundses.append(bounds)
-        # flatten list
-        model_bounds = [t for bounds in boundses for t in bounds]
 
-        return model_bounds
+        # flatten list
+        bounds = sum(boundses, [])
+        #lower = [b[0] for b in boundses]
+        #upper = [b[1] for b in boundses]
+
+        #model_bounds = [t for bounds in boundses for t in bounds]
+
+        return bounds  #model_bounds
 
     def get_parameter_vector(self, as_list=True):
         """Get all parameter values, formatted as a single vector.
@@ -679,6 +701,15 @@ class _LayerDict:
     def __init__(self, _dict):
         self._dict = _dict
         self._values = list(_dict.values())
+
+    def __len__(self):
+        """Overloaded len.
+
+        Returns
+        -------
+        len: int: number of layers.
+        """
+        return len(self._dict)
 
     def _container_for(self, key):
         if isinstance(key, int):

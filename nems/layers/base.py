@@ -464,7 +464,12 @@ class Layer:
         Phi.get_bounds
 
         """
-        return self.parameters.get_bounds(none_for_inf=none_for_inf)
+        bounds = self.parameters.get_bounds(none_for_inf=none_for_inf)
+
+        #lower = [b[0] for b in bounds]
+        #upper = [b[1] for b in bounds]
+
+        return bounds
 
     @property
     def bounds(self):
@@ -894,6 +899,8 @@ class Phi:
         
         """
         bounds = [p.bounds for p in self._dict.values()]
+        sizes = [p.values.size for p in self._dict.values()]
+
         if none_for_inf:
             subbed_bounds = []
             for b in bounds:
@@ -904,7 +911,16 @@ class Phi:
                     upper = None
                 subbed_bounds.append((lower, upper))
             bounds = subbed_bounds
-        
+
+        bounds_new = []
+        for b, s in zip(bounds, sizes):
+            if type(b[0]) is not np.array:
+                bounds_new.extend([b]*s)
+                #bounds_new.append((np.repeat(np.array(b[0]), s), np.repeat(np.array(b[1]), s)))
+            else:
+                bounds_new.append(b)
+        bounds =  bounds_new
+
         return bounds
 
     @property
@@ -955,8 +971,10 @@ class Phi:
         """False if anywhere `vector < bounds[0]` or `vector > bounds[1]`."""
         passed = True
         bounds = self.get_bounds(none_for_inf=False)
-        lower = np.array([b[0] for b in bounds])
-        upper = np.array([b[1] for b in bounds])
+        vals = self._dict.values()
+        lower = np.concatenate([np.repeat(b[0], np.size(v)) for b, v in zip(bounds,vals)])
+        upper = np.concatenate([np.repeat(b[1], np.size(v)) for b, v in zip(bounds,vals)])
+        #upper = np.array([b[1] for b in zip(bounds,vals)])
         if np.any(vector < lower) or np.any(vector > upper):
             passed = False
         return passed
@@ -964,8 +982,11 @@ class Phi:
     def get_indices_outof_range(self, vector, as_bool=True):
         """Get indices where `vector < bounds[0]` or `vector > bounds[1]`."""
         bounds = self.get_bounds(none_for_inf=False)
-        lower = np.array([b[0] for b in bounds])
-        upper = np.array([b[1] for b in bounds])
+        vals = self._dict.values()
+        lower = np.concatenate([np.repeat(b[0], np.size(v)) for b, v in zip(bounds,vals)])
+        upper = np.concatenate([np.repeat(b[1], np.size(v)) for b, v in zip(bounds,vals)])
+        #lower = np.array([b[0] for b in bounds])
+        #upper = np.array([b[1] for b in bounds])
 
         if as_bool:
             indices = np.logical_or(vector < lower, vector > upper)

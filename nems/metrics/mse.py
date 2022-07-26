@@ -61,16 +61,8 @@ def nmse(prediction, target):
     error = np.sqrt(mse(prediction, target))
 
     if std_of_target == 0:
-        # TODO: ask Stephen about this, not sure why this is coded this way.
-        #       This would only pop up if target is a constant vector, which
-        #       should be a very easy fit, but in this case the return value
-        #       will always be 1 so optimization would fail to converge.
-
-        #       Maybe this should be `std_of_target = 1` instead?
-        #       (i.e. just use the un-normalized error).
-        #       Alternatively, just raise NotImplementedError to make it clear
-        #       that this method can't be used to fit to constant vectors.
-        normalized_error = 1
+        # This means the target is a constant. Return raw mse, so that fits will converge
+        normalized_error = error
     else:
         normalized_error = error / std_of_target
     return normalized_error
