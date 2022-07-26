@@ -41,7 +41,7 @@ class StaticNonlinearity(Layer):
             #       but need to add option to make this more general.
             # If there's a `shift` parameter for the subclassed nonlinearity,
             # still apply that. Otherwise, pass through inputs.
-            output = [inputs + self.parameters.get('shift', 0)]  
+            output = [inputs + self.parameters.get('shift', 0).values]
         return output
 
     def nonlinearity(self, *inputs):
@@ -81,6 +81,17 @@ class LevelShift(StaticNonlinearity):
         shift = Parameter('shift', shape=self.shape, prior=prior)
         return Phi(shift)
 
+    def nonlinearity(self, *inputs):
+        """constant shift
+
+        Notes
+        -----
+        Simply add a constant shift to the signal
+
+        """
+        shift, = self.get_parameter_values()
+        return [x + shift for x in inputs]
+
     @layer('lvl')
     def from_keyword(keyword):
         """Construct LevelShift from a keyword.
@@ -104,7 +115,7 @@ class LevelShift(StaticNonlinearity):
                 dims = op.split('x')
                 shape = tuple([int(d) for d in dims])
 
-        return StaticNonlinearity(shape=shape)
+        return LevelShift(shape=shape)
 
 
 class DoubleExponential(StaticNonlinearity):
@@ -226,7 +237,7 @@ class RectifiedLinear(StaticNonlinearity):
         `StaticNonlinearity.evaluate` is the same as for other subclasses.
         
         """
-        # TODO: add ability to mulitply Parameter by scalar
+        # TODO: add ability to multiply Parameter by scalar
         return [x * (x > -self.parameters['shift'].values) for x in inputs]
 
     @layer('relu')

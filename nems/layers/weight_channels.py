@@ -164,7 +164,7 @@ class GaussianWeightChannels(WeightChannels):
         """
 
         mean_bounds = (0, 1)
-        sd_bounds = (0, np.inf)
+        sd_bounds = (0.01, np.inf)
         
         _, n_output_channels = self.shape
         shape = (n_output_channels,)
