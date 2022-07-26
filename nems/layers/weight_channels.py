@@ -155,7 +155,8 @@ class GaussianWeightChannels(WeightChannels):
         sd : scalar or ndarray
             Standard deviation of gaussian, shape is (N_outputs,).
             Prior:  TODO  # Currently using defaults
-            Bounds: (0, np.inf)
+            Bounds: (0*, np.inf)
+            * Actually set to machine epsilon to avoid division by zero.
 
         Returns
         -------
@@ -164,7 +165,7 @@ class GaussianWeightChannels(WeightChannels):
         """
 
         mean_bounds = (0, 1)
-        sd_bounds = (0.01, np.inf)
+        sd_bounds = (0, np.inf)
         
         _, n_output_channels = self.shape
         shape = (n_output_channels,)
@@ -179,7 +180,7 @@ class GaussianWeightChannels(WeightChannels):
             Parameter(name='mean', shape=shape, bounds=mean_bounds,
                       prior=mean_prior),
             Parameter(name='sd', shape=shape, bounds=sd_bounds,
-                      prior=sd_prior)
+                      prior=sd_prior, zero_to_epsilon=True)
             )
 
         return parameters

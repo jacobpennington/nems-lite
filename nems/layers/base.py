@@ -1317,7 +1317,8 @@ class Parameter:
     """Stores and manages updates to values for one parameter of one Layer."""
 
     def __init__(self, name, shape=(), prior=None, bounds=None,
-                 default_bounds='infinite', initial_value='mean'):
+                 default_bounds='infinite', zero_to_epsilon=False,
+                 initial_value='mean'):
         """Stores and manages updates to values for one parameter of one Layer.
 
         Parameters are intended to exist as components of a parent Phi instance,
@@ -1344,6 +1345,12 @@ class Parameter:
             If `'infinite'`  : set bounds to (-np.inf, np.inf)
             If `'percentile'`: set bounds to tails of `Parameter.prior`.
                 (prior.percentile(0.0001), prior.percentile(0.9999))
+        zero_to_epsilon : False
+            If True, change 0-entries of bounds to machine epsilon for float32,
+            to avoid division by 0. Essentially this makes bounds an open
+            (or half-open) interval if it includes zero values. This flag should
+            be set any time that `Parameter.values` would be used in division,
+            log, etc.
         initial_value : str, scalar, or ndarray, default='mean'
             Determines initial entries of `Parameter.values`.
             If `'mean'`   : set values to `Parameter.prior.mean()`.
@@ -1378,8 +1385,8 @@ class Parameter:
                 f"prior.shape:     {prior.shape}"
                 )
 
-        # set default based on `default_bounds`
         if bounds is None:
+            # Set bounds based on `default_bounds`
             if default_bounds == 'percentile':
                 bounds = (prior.percentile(0.0001), prior.percentile(0.9999))
             elif default_bounds == 'infinite':
@@ -1391,6 +1398,14 @@ class Parameter:
                     f"default_bounds: {default_bounds}\n"
                     "Accepted values are 'percentile' or 'infinite'."
                     )
+        if zero_to_epsilon:
+            # Swap 0 with machine epsilon for float32
+            eps = np.finfo(np.float32).eps
+            lower, upper = bounds
+            lower = eps if lower == 0 else lower
+            upper = eps if upper == 0 else upper
+            bounds = lower, upper
+
         self.bounds = bounds
 
         if isinstance(initial_value, str) and (initial_value == 'mean'):
