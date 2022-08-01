@@ -961,7 +961,7 @@ class Phi:
 
     def within_bounds(self, vector):
         """False if anywhere `vector < bounds[0]` or `vector > bounds[1]`."""
-        return np.all(self.get_indices_outof_range(vector, as_bool=True))
+        return not np.any(self.get_indices_outof_range(vector, as_bool=True))
 
     def set_vector(self, vector, ignore_checks=False):
         """Set values of `Phi._array` sliced at `Phi._index` to a new vector.
