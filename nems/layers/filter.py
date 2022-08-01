@@ -13,10 +13,25 @@ class FIR(Layer):
         Parameters
         ----------
         shape : N-tuple
-            Determines the shape of `FIR.coefficients`.
+            Determines the shape of `FIR.coefficients`. Axes should be:
+            (C input channels, T time bins, ..., N filters)
+            where only the first two dimensions are required. Aside from the
+            time and filter axes (index 1 and -1, respectively), the size of
+            each dimension must match the size of the input's dimensions.
+
+            NOTE: The C and T dimensions are actually transposed (i.e. input
+            data should still have shape (T,C,...)). This format was chosen to
+            make shape specification intuitive and consistent across layers,
+            e.g. `WeightChannels(shape=(18,4))` and `FIR(shape=(4,25))` will
+            line up correctly because the inner 4's match.
+
+            If only two dimensions are present, a singleton dimension will be
+            appended to represent a single filter. For higher-dimensional data
+            with single filter, users are responsible for adding this singleton
+            dimension.
+
             TODO: N-dim might not actually be supported, depends on how
                   evaluate ends up being implemented.
-                  Old implementation was (n_inputs, time bins, n_filters)
 
         parameters : Phi or None, optional
             Specifies the value of each variable used to compute
@@ -28,6 +43,9 @@ class FIR(Layer):
         FIR
 
         """
+        if len(shape) == 2:
+            # Make sure there's a dimension for number of filters
+            shape += (1,)  
         self.shape = shape
         super().__init__(**kwargs)
 
@@ -62,48 +80,61 @@ class FIR(Layer):
             coefficients.shape = WeightChannels.shape
         
         """
-        return self.parameters['coefficients']
+        # .values is needed in this case since we have to use `np.swapaxes`,
+        # which is not supported through ufunc.
+        return self.parameters['coefficients'].values
 
     def evaluate(self, *inputs):
         """Convolve `FIR.coefficients` with input(s).
-
-        TODO: need to figure out the "correct" way to pad the removed entries.
-              since zi for old was always just zeros with one less entry, I'm
-              guessing it essentially just tacked those zeros on to the beginning
-              of the output?
-
-              No, that doesn't work (output of old one doesn't have zero padding
-              in the output anyway). Maybe they're added on to the input prior
-              to convolution? Will have to look at the lfilter code more closely
-              I guess, can't tell from the NEMS code.
-
-              Ah... yes, zi gets appended to input prior to convolution. But
-              testing after making that change, the outputs are still very
-              different. May have something to do with the fact that old
-              NEMS explicitly sums each channel? 
+        
+        TODO: need to do more testing for dim > 2 case, but this at least
+              doesn't break dim = 2 (i.e. still matches old code output) and
+              works with multiple filters.
         
         """
-
-        # TODO: handle arbitrary dimensionality
-        #       (will need to flip on each additional matched axis, every axis
-        #        has to match except the one being "convolved on" -- really they're
-        #        all convolved but valid throws the other stuff out)
-
         n_channels, filter_length = self.shape[:2]
-        padding = np.zeros(shape=(filter_length-1, n_channels))
+        n_filters = self.shape[-1]
+        other_dims = self.shape[2:-1]
+
+        # Swap channels and time to  match input.
+        coefficients = self.coefficients.swapaxes(0, 1)
+        # Coefficients are applied "backwards" (convolution) relative to how
+        # they are specified (filter), so have to flip all dimensions except
+        # time and number of filters.
+        flipped_axes = [1]  # Always flip channels
+        for i, d in enumerate(other_dims):
+            # Also flip any additional dimensions
+            flipped_axes.append(i+2)
+        coefficients = np.flip(coefficients, axis=flipped_axes)
+
+        # Pad zeros to handle boundary effects.
+        # TODO: this only really works if the data itself has surrounding
+        #       silence (or other null stimulus). Is there a better way to
+        #       handle this?
+        padding = np.zeros(shape=((filter_length-1, n_channels) + other_dims))
+
         output = []
         for x in inputs:
-            c = np.flip(self.coefficients.T, axis=1)
-            input_with_padding = np.concatenate([padding, x])
-            z = scipy.signal.convolve(input_with_padding, c, mode='valid')
-            output.append(z)
+            filter_outputs = []
+            for j in range(n_filters):
+                c = coefficients[..., j]
+                input_with_padding = np.concatenate([padding, x])
+                z = scipy.signal.convolve(input_with_padding, c, mode='valid')
+                filter_outputs.append(z)
+            # Output of each convolution should be (T,1), concatenate to (T,N)
+            output.append(np.concatenate(filter_outputs, axis=1))
 
         return output
 
     def old_evaluate(self, *inputs):
-        """Temporary copy of old nems implementation, for testing."""
+        """Temporary copy of old nems implementation, for testing.
+        
+        TODO: DELETE ME when no longer needed for testing (along with the
+        copied code toward the bottom of the file).
+        
+        """
         output = [
-            per_channel(x.T, self.coefficients, non_causal=False, rate=1).T
+            per_channel(x.T, self.coefficients[:,:,0], non_causal=False, rate=1).T
             for x in inputs
             ]
         return output
@@ -153,7 +184,7 @@ STRF = FIR
 ###########################      OLD FIR CODE     #############################
 ###############################################################################
 
-# DELETE ME when no longer needed for testing
+# TODO: DELETE ME when no longer needed for testing
 
 
 
