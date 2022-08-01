@@ -616,7 +616,7 @@ class Layer:
         """
         self.parameters.set_index(i, new_index=new_index)
 
-    # Passthrough dict-like interface for Layer.parameters
+    # Passthrough *some* of the dict-like interface for Layer.parameters
     # NOTE: 'get' operations through this interface return Parameter instances,
     #       not arrays. For array format, reference Parameter.values or use
     #       `Layer.get_parameter_values`.
@@ -632,25 +632,21 @@ class Layer:
         """Set Parameter.values (not Parameter itself)."""
         self.parameters[key] = val
 
-    def update(self, *args, **kwargs):
-        """Update Parameter values (not the Parameters themselves).
-        
-        Alias for `Layer.set_parameter_values`.
-
-        """
-        self.set_parameter_values(*args, **kwargs)
-
     def __iter__(self):
-        return self.parameters.__iter__()
+        """Return an iter-wrapped singleton list containing this Layer.
 
-    def keys(self):
-        return self.parameters.keys()
-
-    def items(self):
-        return self.parameters.items()
-
-    def values(self):
-        return self.parameters.values()
+        Supports compatibility for iterating over Model layers when single
+        Layers are returned, without the need to repeatedly add `[0]` to the
+        end of indexing statements.
+        
+        NOTE: This does *not* iterate over the Layer's parameters, and is not
+              part of the passed-through dict interface for `Layer.Phi`. To
+              iterate over parameters, refer iterators directly to
+              `Layer.parameters`.
+              E.x: `for p in Layer.parameters` instead of `for p in Layer`.
+        
+        """
+        return iter([self])
 
     def __repr__(self):
         layer_dict = Layer().__dict__

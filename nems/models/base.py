@@ -757,20 +757,20 @@ class _LayerDict:
         self._dict = _dict
         self._values = list(_dict.values())
 
-    def _container_for(self, key):
-        if isinstance(key, int):
-            container = self._values
-        else:
-            # Should be a string key
-            container = self._dict
-        return container
-
     def __getitem__(self, keys):
+        # tuple([]) wrapper to enable multiple keys with Model.layers[] syntax.
         if isinstance(keys, (str, int, slice)):
             keys = tuple([keys])
         value = self.get(*keys, default=None)
+
+        # Raise KeyError if any keys returned None
         if value is None:
             raise KeyError(keys)
+        elif isinstance(value, list):
+            none_in_list = [x is None for x in value]
+            if np.any(none_in_list):
+                raise KeyError(keys)
+
         return value
 
     def get(self, *keys, default=None):
@@ -780,7 +780,12 @@ class _LayerDict:
         elif isinstance(keys[0], slice):
             layers = self._values[keys[0]]
         else:
-            container = self._container_for(keys[0])
+            # Require all keys str or all int, mixing not allowed.
+            # This is meant to discourage hard-to-read code.
+            if isinstance(keys[0], int):
+                container = self._values
+            else:
+                container = self._dict
             layers = []
             for key in keys:
                 try:
@@ -792,10 +797,10 @@ class _LayerDict:
         # List wrapper (to replace tuple) is just for output consistency should
         # be no practical difference in most cases.
         # Unwrap instead if it's a singleton list, *unless* keys was slice.
-        if isinstance(layers, tuple):
+        if isinstance(layers, (tuple, list)):
             if (len(layers) == 1) and not isinstance(keys[0], slice):
                 layers = layers[0]
-            else:
+            elif isinstance(layers, tuple):
                 layers = list(layers)
 
         return layers
