@@ -162,14 +162,17 @@ class KeywordRegistry:
         if name is None:
             name = obj.__name__
         log.debug("%s lib registering function: %s", self.name, name)
-
+        
+        # If obj has an underlying __func__, use that instead to avoid
+        # error from staticmethod not having __module__ or __name__ attributes.
+        # TODO: not clear why this error started popping up.
+        obj = getattr(obj, '__func__', obj)
         try:
+            # Default to module rather than file, to maintain portability.
             location = str(obj.__module__) + "." + obj.__name__
         except AttributeError:
-            # Always default to the name of the module rather than the file
-            # because this makes code more portable across platforms.
             location = str(obj.__name__)
-
+            
         self.keywords[name] = Keyword(name, obj, location)
 
     def __iter__(self):
