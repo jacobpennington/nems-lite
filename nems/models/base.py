@@ -789,14 +789,14 @@ class _LayerDict:
                     layer = default
                 layers.append(layer)
         
-        # Tuple wrapper (to replace list) is just for output consistency with
-        # __getitem__, should be no practical difference in most cases.
-        # Unwrap instead if it's a singleton list.
-        if isinstance(layers, list):
-            if len(layers) == 1:
+        # List wrapper (to replace tuple) is just for output consistency should
+        # be no practical difference in most cases.
+        # Unwrap instead if it's a singleton list, *unless* keys was slice.
+        if isinstance(layers, tuple):
+            if (len(layers) == 1) and not isinstance(keys[0], slice):
                 layers = layers[0]
             else:
-                layers = tuple(layers)
+                layers = list(layers)
 
         return layers
 
