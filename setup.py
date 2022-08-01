@@ -1,25 +1,20 @@
-import codecs
-import os.path
 from setuptools import find_packages, setup
 
 NAME = 'NEMS'
 
 VERSION = '0.0.1a'
-
-# with codecs.open('README.rst', encoding='utf-8') as f:
-#     long_description = f.read()
-
-GENERAL_REQUIRES = ['numpy', 'scipy', 'matplotlib', 'pandas']
-# pycharm also requires: tornado
-# TF modules require tensorflow
-# GUI requires pyqt, pyqtgraph
+GENERAL_REQUIRES = ['numpy', 'scipy', 'matplotlib']
+# TODO: pycharm also requires tornado? Or was this a glitch?
+# TODO: .ipynb files require jupyter, best way to specify this?
+#       probably in EXTRAS, but which package specifically?
 
 EXTRAS_REQUIRES = {
-    'docs': ['sphinx', 'sphinx_rtd_theme', 'pygments-enaml', 'nbsphinx', 
-             'pandoc', 'IPython', 'sphinx_copybutton'],
-    'nwb': ['allensdk'],
-    'tensorflow': ['tensorflow==2.2', 'tensorboard'],
-    'tests': ['pytest', 'pytest-benchmark'],
+    # TODO: turn some of these back on, temporarily disabled for testing.
+    # 'docs': ['sphinx', 'sphinx_rtd_theme', 'pygments-enaml', 'nbsphinx', 
+    #          'pandoc', 'IPython', 'sphinx_copybutton'],
+    # 'nwb': ['allensdk'],
+    # 'tensorflow': ['tensorflow==2.2', 'tensorboard'],
+    # 'tests': ['pytest', 'pytest-benchmark'],
 }
 
 setup(
