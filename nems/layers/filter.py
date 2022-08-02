@@ -7,7 +7,7 @@ from .base import Layer, Phi, Parameter
 from nems.registry import layer
 
 class FIR(Layer):
-    def __init__(self, shape, **kwargs):
+    def __init__(self, **kwargs):
         """Convolve linear filter(s) with input.
 
         Parameters
@@ -43,10 +43,7 @@ class FIR(Layer):
         FIR
 
         """
-        if len(shape) == 2:
-            # Make sure there's a dimension for number of filters
-            shape += (1,)  
-        super().__init__(shape=shape, **kwargs)
+        super().__init__(**kwargs)
 
     def initial_parameters(self):
         """Get initial values for `FIR.parameters`.
@@ -92,11 +89,17 @@ class FIR(Layer):
         
         """
         n_channels, filter_length = self.shape[:2]
-        n_filters = self.shape[-1]
         other_dims = self.shape[2:-1]
+        coefficients = self.coefficients
+        if len(self.shape) == 2:
+            # Add a dummy filter axis
+            n_filters = 1
+            coefficients = coefficients[..., np.newaxis]
+        else:
+            n_filters = self.shape[-1]
 
         # Swap channels and time to  match input.
-        coefficients = self.coefficients.swapaxes(0, 1)
+        coefficients = coefficients.swapaxes(0, 1)
         # Coefficients are applied "backwards" (convolution) relative to how
         # they are specified (filter), so have to flip all dimensions except
         # time and number of filters.
@@ -132,10 +135,23 @@ class FIR(Layer):
         copied code toward the bottom of the file).
         
         """
+        c = self.coefficients
+        if len(c.shape) == 3:
+            # kludge to make multiple filterbanks work with new coefficient
+            # structure, just for testing. Split n filters dimension (2) and
+            # concatenate along n channels dimension (0).
+            # E.g. shape (d1, d2, d3) -> (d1*d3, d2)
+            d1, d2, d3 = c.shape
+            c = np.concatenate(np.split(c, d3, axis=2), axis=0).squeeze()
+            banks = d3
+        else:
+            banks = 1
+
         output = [
-            per_channel(x.T, self.coefficients[:,:,0], non_causal=False, rate=1).T
+            per_channel(x.T, c, non_causal=False, rate=1, bank_count=banks).T
             for x in inputs
-            ]
+        ]
+
         return output
     
     @layer('fir')
@@ -243,6 +259,7 @@ def per_channel(x, coefficients, bank_count=1, non_causal=0, rate=1,
         n_banks = int(n_filters / bank_count)
     else:
         n_banks = n_filters
+
     if cross_channels:
         # option 0: user has specified that each filter should be applied to
         # each input channel (requires bank_count==1)
