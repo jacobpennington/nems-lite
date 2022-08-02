@@ -29,7 +29,7 @@ class StateGain(Layer):
         one = np.ones(shape=self.shape)
 
         gain_mean = zero.copy()
-        gain_mean[:,0] = 1  # Purpose of this?
+        gain_mean[0,:] = 1  # TODO: Explain purpose of this?
         gain_sd = one/20
         gain_prior = Normal(gain_mean, gain_sd)
         gain = Parameter('gain', shape=self.shape, prior=gain_prior)
@@ -42,12 +42,14 @@ class StateGain(Layer):
         return Phi(gain, offset)
 
     def evaluate(self, *inputs, state):
-        # TODO: probably need to swap order of data somewhere since we're
-        #       defaulting to time_axis=0 here. May also need to transpose
-        #       shape of parameters, not sure.
+        # TODO: what about multiple state inputs? E.g. if I want to use
+        #       pupil and task-type, this requires merging those into a single
+        #       array beforehand. But would be more intuitive to be able to
+        #       say StateGain(inputs=['pred', 'pupil', 'task']).
         gain, offset = self.get_parameter_values()
         output = [
-            np.matmul(gain, state) * x + np.matmul(offset, state)
+            # Output should be same shape as x, * is element-wise mult.
+            np.matmul(state, gain) * x + np.matmul(state, offset)
             for x in inputs
         ]
 
@@ -55,8 +57,21 @@ class StateGain(Layer):
 
     @layer('stategain')
     def from_keyword(keyword):
+        """Construct StateGain from keyword.
+        
+        Keyword options
+        ---------------
+        {digit}x{digit} : specifies shape, (n state channels, n stim channels)
+            n stim channels can also be 1, in which case the same weighted
+            channel will be broadcast to all stim channels (if there is more
+            than 1).
+        
+        See also
+        --------
+        Layer.from_keyword
+
+        """
         # TODO: other options from old NEMS
-        # TODO: document expectation for shape (see comment in .evaluate)
         options = keyword.split('.')
         for op in options[1:]:
             if op[0].isdigit():
