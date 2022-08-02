@@ -7,43 +7,50 @@ from .base import Layer, Phi, Parameter
 from nems.registry import layer
 
 class FIR(Layer):
-    def __init__(self, **kwargs):
-        """Convolve linear filter(s) with input.
+    """Convolve linear filter(s) with input.
 
-        Parameters
-        ----------
-        shape : N-tuple
-            Determines the shape of `FIR.coefficients`. Axes should be:
-            (C input channels, T time bins, ..., N filters)
-            where only the first two dimensions are required. Aside from the
-            time and filter axes (index 1 and -1, respectively), the size of
-            each dimension must match the size of the input's dimensions.
+    Parameters
+    ----------
+    shape : N-tuple
+        Determines the shape of `FIR.coefficients`. Axes should be:
+        (C input channels, T time bins, ..., N filters)
+        where only the first two dimensions are required. Aside from the
+        time and filter axes (index 1 and -1, respectively), the size of
+        each dimension must match the size of the input's dimensions.
 
-            NOTE: The C and T dimensions are actually transposed (i.e. input
-            data should still have shape (T,C,...)). This format was chosen to
-            make shape specification intuitive and consistent across layers,
-            e.g. `WeightChannels(shape=(18,4))` and `FIR(shape=(4,25))` will
-            line up correctly because the inner 4's match.
+        NOTE: The C and T dimensions are actually transposed (i.e. input
+        data should still have shape (T,C,...)). This format was chosen to
+        make shape specification intuitive and consistent across layers,
+        e.g. `WeightChannels(shape=(18,4))` and `FIR(shape=(4,25))` will
+        line up correctly because the inner 4's match.
 
-            If only two dimensions are present, a singleton dimension will be
-            appended to represent a single filter. For higher-dimensional data
-            with single filter, users are responsible for adding this singleton
-            dimension.
+        If only two dimensions are present, a singleton dimension will be
+        appended to represent a single filter. For higher-dimensional data
+        with single filter, users are responsible for adding this singleton
+        dimension.
 
-            TODO: N-dim might not actually be supported, depends on how
-                  evaluate ends up being implemented.
+        TODO: N-dim might not actually be supported, depends on how
+                evaluate ends up being implemented.
 
-        parameters : Phi or None, optional
-            Specifies the value of each variable used to compute
-            `FIR.evaluate()`. If `None`, values will be determined by
-            `FIR.initial_parameters`.
-        
-        Returns
-        -------
-        FIR
+    See also
+    --------
+    nems.layers.base.Layer
 
-        """
-        super().__init__(**kwargs)
+    Examples
+    --------
+    >>> fir = FIR(shape=(4,15))
+    >>> weighted_input = np.random.rand(10000, 4) # (time, channels)
+    >>> out = fir.evaluate(weighted_input)
+    >>> out.shape
+    (10000, 1)
+
+    >>> fir = FIR(shape=(18,25,4))                # full-rank STRF
+    >>> spectrogram = np.random.rand(10000, 18)
+    >>> out = fir.evaluate(spectrogram)
+    >>> out.shape
+    (10000, 4)
+
+    """
 
     def initial_parameters(self):
         """Get initial values for `FIR.parameters`.
@@ -123,8 +130,13 @@ class FIR(Layer):
                 input_with_padding = np.concatenate([padding, x])
                 z = scipy.signal.convolve(input_with_padding, c, mode='valid')
                 filter_outputs.append(z)
-            # Output of each convolution should be (T,1), concatenate to (T,N)
-            output.append(np.concatenate(filter_outputs, axis=1))
+            # Output of each convolution should be (T,1), concatenate to (T,N).
+            out = np.concatenate(filter_outputs, axis=1)
+            # For data with dimension > 2, there will also be extra singleton
+            # axes, so squeeze those out.
+            if len(other_dims) > 0:
+                out = out.squeeze()
+            output.append(out)
 
         return output
 
