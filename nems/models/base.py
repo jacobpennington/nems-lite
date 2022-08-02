@@ -178,6 +178,7 @@ class Model:
 
         # Loop through transformations
         iter_zip = zip(layers, all_inputs, all_outputs)
+        data_out = None
         for layer, next_input, next_output in iter_zip:
             if next_input is None:
                 # Use previous output
@@ -190,21 +191,34 @@ class Model:
                 # Get data from one key
                 data_in = data[next_input]
                 data_out = layer.evaluate(data_in)
-            elif isinstance(next_input, list):
-                # Get data from all keys, in list order
-                data_in = [data[k] for k in next_input]
-                data_out = layer.evaluate(*data_in)
-            elif isinstance(next_input, dict):
-                # Map evaluate arguments to specific data keys
-                data_in = {k: data[v] for k, v in next_input.items()}
-                data_out = layer.evaluate(**data_in)
             else:
-                raise TypeError(
-                    f"Unrecognized type for {layer.name}.input:"
-                    f"{type(next_input)}"
-                    )
+                if isinstance(next_input, dict):
+                    next_input = [next_input]
+                args, kwargs = self._parse_input(next_input, data, data_out)
+                data_out = layer.evaluate(*args, **kwargs)
 
-            # Cast output as list if only one array, for fewer checks
+                # Get data from all keys, in list order. Replace None entries
+                # with previous `data_out`.
+                # TODO: 
+                # data_in = [data[k] if k is not None else data_out
+                #            for k in next_input]
+                # data_out = layer.evaluate(*data_in)
+
+
+                # elif isinstance(next_input, dict):
+                #     # Map evaluate arguments to specific data keys. Replace None
+                #     # entries with previous `data_out`.
+                #     data_in = {k: (data[v] if v is not None else data_out)
+                #             for k, v in next_input.items()}
+                #     data_out = layer.evaluate(**data_in)
+
+            # else:
+            #     raise TypeError(
+            #         f"Unrecognized type for {layer.name}.input:"
+            #         f"{type(next_input)}"
+            #         )
+
+            # Cast output as list if only one array, for fewer checks elsewhere.
             if not isinstance(data_out, (list, tuple)):
                 data_out = [data_out]
 
@@ -239,6 +253,33 @@ class Model:
             data = data_out
         return data
 
+    def _parse_input(self, next_input, data, previous_output):
+        """Map `Layer.input` to data. Internal for `Model.evaluate`."""
+        args = []
+        kwargs = {}
+        for key in next_input:
+            if key is None:
+                if previous_output is None:
+                    raise ValueError(
+                        "Cannot determine first input for Model, must specify "
+                        "either `input_name` or `FirstLayer.input`."
+                        )
+                args.append(previous_output)
+            elif isinstance(key, str):
+                args.append(data[key])
+            elif isinstance(key, list):
+                args.append([data[k] for k in key])
+            elif isinstance(key, dict):
+                kwarg_keys = key.keys()
+                data_keys = key.values()
+                vals, _ = self._parse_input(data_keys, data, previous_output)
+                kwargs.update({k: v for k, v in zip(key.keys(), vals)})
+            else:
+                raise TypeError(
+                    f"Unrecognized input type: {type(next_input)}"
+                    )
+
+        return args, kwargs
 
     def predict(self, input, return_full_data=False, **eval_kwargs):
         """As `Model.evaluate`, but return only the last output by default."""

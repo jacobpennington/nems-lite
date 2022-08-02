@@ -11,6 +11,10 @@ class StateGain(Layer):
     Parameters
     ----------
     shape : N-tuple of int
+
+    Examples
+    --------
+    TODO
     
     """
 
@@ -48,10 +52,22 @@ class StateGain(Layer):
         return Phi(gain, offset)
 
     def evaluate(self, *inputs, state):
-        # TODO: what about multiple state inputs? E.g. if I want to use
-        #       pupil and task-type, this requires merging those into a single
-        #       array beforehand. But would be more intuitive to be able to
-        #       say StateGain(inputs=['pred', 'pupil', 'task']).
+        """Multiply and shift input(s) by weighted sums of state channels.
+        
+        Parameters
+        ----------
+        inputs : N-tuple of ndarray
+            Data to be modulated by state, typically the output(s) of a previous
+            Layer. At least one input is expected.
+        state : ndarray or list of ndarray
+            State data to modulate input(s) with. If list or dict, entries will
+            be concatenated along axis 1 in the order they are provided.
+
+        """
+        if isinstance(state, list):
+            # Concatenate along channel axis
+            state = np.concatenate(state, axis=1)
+
         gain, offset = self.get_parameter_values()
         output = [
             # Output should be same shape as x, * is element-wise mult.
