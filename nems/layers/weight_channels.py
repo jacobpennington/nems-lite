@@ -9,34 +9,31 @@ from .base import Layer, Phi, Parameter
 # TODO: double check all shape references after dealing w/ data order etc,
 #       make sure correct dims are lined up.
 class WeightChannels(Layer):
+    """Compute linear weighting of input channels, akin to a dense layer.
 
-    def __init__(self, **kwargs):
-        """Compute linear weighting of input channels, akin to a dense layer.
+    Parameters
+    ----------
+    shape : N-tuple (usually N=2)
+        Determines the shape of `WeightChannels.coefficients`.
+        First dimension should match the spectral dimension of the input,
+        second dimension should match the spectral dimension of the output.
+        Note that higher-dimesional shapes are also allowed and should work
+        as-is for this base class, but overall Layer design is intended for
+        2-dimensional data so subclasses might not support other shapes.
 
-        Parameters
-        ----------
-        shape : N-tuple (usually N=2)
-            Determines the shape of `WeightChannels.coefficients`.
-            First dimension should match the spectral dimension of the input,
-            second dimension should match the spectral dimension of the output.
-            Note that higher-dimesional shapes are also allowed and should work
-            as-is for this base class, but overall Layer design is intended for
-            2-dimensional data so subclasses might not support other shapes.
-        
-        Returns
-        -------
-        WeightChannels
+    See also
+    --------
+    nems.layers.base.Layer
 
-        Examples
-        --------
-        >>> wc = WeightChannels(shape=18,4)
-        >>> spectrogram = np.random.rand(10000, 18)  # (time, channels)
-        >>> out = spectrogram @ wc.coefficients      # wc.evaluate(spectrogram)
-        >>> out.shape
-        (10000, 4)
+    Examples
+    --------
+    >>> wc = WeightChannels(shape=(18,4))
+    >>> spectrogram = np.random.rand(10000, 18)  # (time, channels)
+    >>> out = spectrogram @ wc.coefficients      # wc.evaluate(spectrogram)
+    >>> out.shape
+    (10000, 1)
 
-        """
-        super().__init__(**kwargs)
+    """
 
     def initial_parameters(self):
         """Get initial values for `WeightChannels.parameters`.
@@ -131,13 +128,13 @@ class WeightChannels(Layer):
 
 
 class GaussianWeightChannels(WeightChannels):
+    """As WeightChannels, but sample coefficients from gaussian functions."""
 
     def initial_parameters(self):
         """Get initial values for `GaussianWeightChannels.parameters`.
         
-        # TODO: Currently this assumes 2D shape, with time on the first axis
-        #       We should refactor to support higher-dimensional weights
-        #       and different ordering of dimensions.
+        # TODO: Currently this assumes 2D shape, we should refactor to support
+        # higher-dimensional weights.
 
         Layer parameters
         ----------------
@@ -180,11 +177,7 @@ class GaussianWeightChannels(WeightChannels):
 
     @property
     def coefficients(self):
-        """Return N discrete gaussians with T bins, where `self.shape=(T,N)`.
-        
-        # TODO: add axis_X = Y options to make this not assume specific order
-        
-        """
+        """Return N discrete gaussians with T bins, where `shape=(T,N)`."""
         mean = self.parameters['mean'].values
         sd = self.parameters['sd'].values
         n_input_channels, _ = self.shape

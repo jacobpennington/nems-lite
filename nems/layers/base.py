@@ -81,6 +81,15 @@ class Layer:
             shape of their Parameters. See individual subclasses for expected
             format.
 
+        Attributes
+        ----------
+        state_name : str or None; optional.
+            If string, `state_name` will be interpreted as the name of an
+            argument for `Layer.evaluate`. During Model evaluation, if
+            `Layer.input is None` and a `state` array is provided to
+            `Model.evaluate`, then `state` will be added to other inputs as a
+            keyword argument, i.e.: `layer.evaluate(*inputs, **state)`.
+
         See also
         --------
         nems.models.base.Model
@@ -157,11 +166,6 @@ class Layer:
         if bounds is not None:
             self.set_bounds(**bounds)
 
-        # If string, `state_name` will be interpreted as the name of an argument
-        # for `Layer.evaluate`. During Model evaluation, if `Layer.input` is
-        # None and a state array is provided to `Model.evaluate`, then state
-        # will be added to other inputs as a keyword argument, i.e.:
-        # `layer.evaluate(*inputs, **state)`.
         self.state_name = None
 
     @layer('baseclass')

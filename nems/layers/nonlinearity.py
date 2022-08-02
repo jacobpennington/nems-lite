@@ -7,28 +7,27 @@ from .base import Layer, Phi, Parameter
 
 
 class StaticNonlinearity(Layer):
+    """Apply a nonlinear transformation to input(s).
+    
+    TODO: Test if current implementations will work with higher dim data.
 
-    def __init__(self, shape, **kwargs):
-        """Apply a nonlinear transformation to input(s).
-        
-        TODO: Test if current implementations will work with higher dim data.
+    Parameters
+    ----------
+    shape : N-tuple of int (usually N=1)
+        Determines the shape of each Parameter in `.parameters`.
+        First dimension should match the spectral dimenion of the input.
+        Note that higher-dimesional shapes are also allowed, but overall
+        Layer design is intended for 1-dimensional shapes.
 
-        Parameters
-        ----------
-        shape : N-tuple (usually N=1)
-            Determines the shape of each Parameter in `.parameters`.
-            First dimension should match the spectral dimenion of the input.
-            Note that higher-dimesional shapes are also allowed, but overall
-            Layer design is intended for 1-dimensional shapes.
+    Attributes
+    ----------
+    skip_nonlinearity : bool
+        If True, don't apply `nonlinearity` during `evaluate`. Still apply
+        `input += shift`, if `'shift' in StaticNonlinearity.parameters`.
+    
+    """
 
-        Attributes
-        ----------
-        skip_nonlinearity : bool
-            If True, don't apply `nonlinearity` during `evaluate`. Still apply
-            `input += shift`, if `'shift' in StaticNonlinearity.parameters`.
-        
-        """
-        self.shape = shape
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.skip_nonlinearity = False
 
@@ -119,6 +118,7 @@ class LevelShift(StaticNonlinearity):
 
 
 class DoubleExponential(StaticNonlinearity):
+    """TODO: doc here? maybe just copy .evaluate?"""
 
     def initial_parameters(self):
         """Get initial values for `DoubleExponential.parameters`.
@@ -208,6 +208,7 @@ class DoubleExponential(StaticNonlinearity):
 
 
 class RectifiedLinear(StaticNonlinearity):
+    """TODO: doc here? maybe just copy .evaluate?"""
 
     def initial_parameters(self):
         """Get initial values for `RectifiedLinear.parameters`.

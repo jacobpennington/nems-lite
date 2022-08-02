@@ -6,11 +6,17 @@ from .base import Layer, Phi, Parameter
 
 
 class StateGain(Layer):
-    def __init__(self, shape, **kwargs):
-        """Docs TODO"""
-        self.shape = shape
+    """Docs TODO.
+    
+    Parameters
+    ----------
+    shape : N-tuple of int
+    
+    """
+
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.state_name = 'state'  # See Layer.__init__
+        self.state_name = 'state'  # see Layer.__init__
 
     def initial_parameters(self):
         """Docs TODO
