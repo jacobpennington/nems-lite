@@ -46,8 +46,7 @@ class FIR(Layer):
         if len(shape) == 2:
             # Make sure there's a dimension for number of filters
             shape += (1,)  
-        self.shape = shape
-        super().__init__(**kwargs)
+        super().__init__(shape=shape, **kwargs)
 
     def initial_parameters(self):
         """Get initial values for `FIR.parameters`.
@@ -168,12 +167,6 @@ class FIR(Layer):
         fir = FIR(**kwargs)
 
         return fir
-
-    def to_json(self):
-        """Encode FIR as a dictionary. See Layer.to_json."""
-        data = Layer.to_json(self)
-        data['kwargs'].update(shape=self.shape)
-        return data
 
 
 # Optional alias to use when FIR is applied to the full spectrogram.

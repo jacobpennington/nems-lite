@@ -335,6 +335,16 @@ class Model:
             eval_kwargs['time_axis'] = 0
             eval_kwargs['channel_axis'] = 1
 
+
+        # TODO: prediction is always a list, target currently isn't being
+        #       treated as one. Need to do some extra checks to align those
+        #       correctly for the cost function. Only working so far by accident,
+        #       will break if more than one array in prediction list.
+        #
+        #       Need to decide what to do in this case: iterate through the lists
+        #       and take the average? (allows different lengths)
+        #       Concatenate and compute all at once? (all same lengths)
+        #       Other? (e.g. multiple predicts vs one target, take average)
         if backend == 'scipy':
             # TODO: probably move this to a subroutine? will decide after
             #       sketching out more

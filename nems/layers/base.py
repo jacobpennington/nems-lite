@@ -33,7 +33,7 @@ class Layer:
         cls.subclasses[cls.__name__] = cls
 
     def __init__(self, input=None, output=None, parameters=None,
-                 priors=None, bounds=None, name=None):
+                 priors=None, bounds=None, name=None, shape=None):
         """Encapsulates one data-transformation step of a NEMS ModelSpec.
 
         Layers are intended to exist as components of a parent Model by
@@ -41,7 +41,7 @@ class Layer:
 
         Parameters
         ----------
-        input : str, list, dict, or None; optional
+        input : str, list, dict, or None; optional.
             Specifies which data streams should be provided as inputs by
             parent Model during evaluation, where strings refer to keys for a
             dict of arrays provided to `Model.fit`.
@@ -51,16 +51,16 @@ class Layer:
             If dict : many input arrays, with keys specifying which parameter
                       of `Layer.evaluate` each array is associated with.
             (see examples below)
-        output : str, list, or None; optional
+        output : str, list, or None; optional.
             Specifies name(s) for array output(s) of `Layer.evaluate`.
             If None : use default name specified by parent Model.
             If str  : same name for every output (incremented if multiple).
             If list : one name per output (length must match).
             (see examples below)
-        parameters : nems.layers.base.Phi or None; optional
+        parameters : nems.layers.base.Phi or None; optional.
             Specifies values for fittable parameters used by `Layer.evaluate`.
             If None : Phi returned by `Layer.initial_parameters`.
-        priors : dict of Distributions or None; optional
+        priors : dict of Distributions or None; optional.
             Determines prior that each Layer parameter will sample values from.
             Keys must correspond to names of parameters, such that each
             Parameter utilizes `Parameter(name, prior=priors[name])`.
@@ -68,14 +68,18 @@ class Layer:
             where zero and one are appropriately shaped arrays of 0 and 1.
             Individual `None` entries in a `priors` dict result in the same
             behavior for those parameters.
-        bounds : dict of 2-tuples or None; optional
+        bounds : dict of 2-tuples or None; optional.
             Determines minimum and maximum values for fittable parameters. Keys
             must correspond to names of parameters, such that each Parameter
             utilizes `Parameter(name, bounds=bounds[name])`.
             If None : use defaults defined in `Layer.initial_parameters`.
-        name : str or None; optional
+        name : str or None; optional.
             A name for the Layer so that it can be referenced through the
             parent Model, in addition to integer indexing.
+        shape : N-tuple of int or None; optional.
+            Many Layer subclasses use this keyword argument to specify the
+            shape of their Parameters. See individual subclasses for expected
+            format.
 
         See also
         --------
@@ -139,6 +143,7 @@ class Layer:
         self.initial_priors = priors
         self.initial_bounds = bounds
         self.name = name if name is not None else 'unnamed Layer'
+        self.shape = shape
         self.model = None  # pointer to parent ModelSpec
 
         if parameters is None:
@@ -671,7 +676,7 @@ class Layer:
         This (base class) method encodes all attributes that are common to
         all Layers. Subclasses that need to save additional kwargs or attributes
         should overwrite `to_json`, but invoke `Layer.to_json` within the new
-        method as a starting point (see examples below).
+        method as a starting point (see example below).
         
         See also
         --------
@@ -681,13 +686,6 @@ class Layer:
 
         Examples
         --------
-        >>> class WeightChannels(Layer):
-        ...     # ...
-        >>>     def to_json(self):
-        ...         data = Layer.to_json(self)
-        ...         data['kwargs'].update(shape=self.shape)
-        ...         return data
-
         >>> class DummyLayer(Layer):
         >>>     def __init__(self, **kwargs):
         ...         super().__init__(**kwargs)
@@ -708,11 +706,12 @@ class Layer:
             'kwargs': {
                 'input': self.input, 'output': self.output,
                 'parameters': self.parameters, 'priors': self.priors,
-                'bounds': self.bounds, 'name': self.name, 
+                'bounds': self.bounds, 'name': self.name, 'shape': self.shape,
             },
             'attributes': {},
             'class_name': type(self).__name__
             }
+
         return data
 
     @classmethod

@@ -10,7 +10,7 @@ from .base import Layer, Phi, Parameter
 #       make sure correct dims are lined up.
 class WeightChannels(Layer):
 
-    def __init__(self, shape, **kwargs):
+    def __init__(self, **kwargs):
         """Compute linear weighting of input channels, akin to a dense layer.
 
         Parameters
@@ -36,7 +36,6 @@ class WeightChannels(Layer):
         (10000, 4)
 
         """
-        self.shape = shape
         super().__init__(**kwargs)
 
     def initial_parameters(self):
@@ -129,12 +128,6 @@ class WeightChannels(Layer):
         wc = wc_class(**kwargs)
 
         return wc
-
-    def to_json(self):
-        """Encode WeightChannels as a dictionary. See Layer.to_json."""
-        data = Layer.to_json(self)
-        data['kwargs'].update(shape=self.shape)
-        return data
 
 
 class GaussianWeightChannels(WeightChannels):
