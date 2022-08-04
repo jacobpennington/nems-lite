@@ -1,4 +1,3 @@
-from re import S
 import numpy as np
 
 from nems.registry import layer
@@ -125,6 +124,37 @@ class WeightChannels(Layer):
         wc = wc_class(**kwargs)
 
         return wc
+
+    @property
+    def plot_kwargs(self):
+        """Add incremented labels to each output channel for plot legend.
+        
+        See also
+        --------
+        Layer.plot
+        
+        """
+        kwargs = {
+            'label': [f'Channel {i}' for i in range(self.shape[1])]
+        }
+        return kwargs
+
+    @property
+    def plot_options(self):
+        """Add legend at right of plot, with default formatting.
+
+        Notes
+        -----
+        The legend will grow quite large if there are many output channels,
+        but for common use cases (< 10) this should not be an issue. If needed,
+        increase figsize to accomodate the labels.
+
+        See also
+        --------
+        Layer.plot
+        
+        """
+        return {'legend': True}
 
 
 class GaussianWeightChannels(WeightChannels):

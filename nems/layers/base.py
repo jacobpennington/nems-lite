@@ -13,6 +13,7 @@ import numpy as np
 
 from nems.registry import layer
 from nems.distributions import Normal
+from nems.visualization import plot_layer
 
 
 # TODO: add more examples, and tests
@@ -151,8 +152,10 @@ class Layer:
 
         self.initial_priors = priors
         self.initial_bounds = bounds
-        self.name = name if name is not None else 'unnamed Layer'
         self.shape = shape
+        if name is None:
+            name = self.default_name
+        self.name = name
         self.model = None  # pointer to parent ModelSpec
 
         if parameters is None:
@@ -167,6 +170,15 @@ class Layer:
             self.set_bounds(**bounds)
 
         self.state_name = None
+
+    @property
+    def default_name(self):
+        """Get default name for Layer if `name` is not specified in `.__init__`.
+        
+        Base implementation defaults to `SubClass(shape=self.shape)`.
+
+        """
+        return f'{type(self).__name__}(shape={self.shape})'
 
     @layer('baseclass')
     @staticmethod
@@ -296,7 +308,11 @@ class Layer:
         Each Layer subclass must overwrite this method. Any number of arguments
         is acceptable, but each should correspond to one name in `self.input`
         at runtime. An arbitrary number of return values is also allowed, and
-        each should correspond to one name in `self.output`.
+        each should correspond to one name in `self.output`. Subclasses are
+        encouraged to support an arbitrary number of inputs for compatibility
+        with batched optimization. Typically, this is as simple as looping over
+        the same computation for each input (and returning an equal number of
+        outputs).
         
         Input and output names will be associated with arguments and return
         values, respectively, in list-order. If `self.input` is a dictionary,
@@ -624,6 +640,108 @@ class Layer:
 
         """
         self.parameters.set_index(i, new_index=new_index)
+
+    def plot(self, output, fig=None, **plot_kwargs):
+        """Alias for `nems.visualization.model.plot_layer`.
+
+        By default, layer output will be represented by a single 2D line plot
+        with time on the x-axis.
+
+        Parameters
+        ----------
+        output : list of ndarray
+            Data returned by `Layer.evaluate`.
+        fig : matplotlib.pyplot.figure.Figure; optional.
+            The figure on which the plot will be rendered. If not provided, a
+            new figure will be generated.
+        plot_kwargs : dict
+            Additional keyword arguments to be supplied to
+            `matplotlib.pyplot.axes.plot`.
+
+        See also
+        --------
+        nems.visualization.model.plot_model
+        nems.visualization.model.plot_layer
+
+        Notes
+        -----
+        Subclasses can overwrite this method to specify a custom plot.
+        To be compatible with `nems.tools.plotting.plot_model`, the overwritten
+        method must accept `output` as the first argument and `fig` as a keyword
+        argument. The plot must be rendered on the provided Figure (unless
+        `fig is None`), but `output` does not necessarily need to be used (for
+        example, when visualizing model parameters).
+
+        Examples
+        --------
+        >>> class MyNewLayer(Layer):
+        >>>     def evaluate(self, *inputs):
+        >>>         return [2*x for x in inputs]
+        >>>     def plot(self, output, fig=None):
+        >>>         plot_data = some_special_routine(output)
+        >>>         if fig is None:
+        >>>             fig = plt.figure()
+        >>>         ax = fig.subplots(1,1)
+        >>>         ax.plot(plot_data)
+        >>>         return fig
+        >>> # Use evaluate to generate output.
+        >>> layer = MyNewLayer()
+        >>> output = layer.evaluate(np.random.rand(100, 1))
+        >>> layer.plot(output)
+        
+        """
+        return plot_layer(self, output, fig=fig, **plot_kwargs)
+
+    @property
+    def plot_kwargs(self):
+        """Get default keyword arguments for `Layer.plot`.
+        
+        These kwargs will be used by `nems.visualization.model.plot_model`.
+
+        Returns
+        -------
+        dict
+            If `Layer.plot` has *not* been overwritten, each key must correspond
+            to one keyword argument for `matplotlib.axes.Axes.plot`, such that
+            `ax.plot(..., **Layer.plot_kwargs)` is valid.
+
+            If `Layer.plot` *has* been overwritten, each key must correspond to
+            one keyword argument for `Layer.plot`, such that
+            `Layer.plot(..., **Layer.plot_kwargs)` is valid.
+
+        See also
+        --------
+        nems.visualization.model.plot_model
+        
+        """
+        return {}
+    
+    @property
+    def plot_options(self):
+        """Get default plot options for `Layer.plot`.
+
+        These options will be used by `nems.visualization.model.plot_model`.
+
+        Returns
+        -------
+        dict
+            Dictionary keys should correspond to a subset of the keys in
+            `nems.visualization.model._DEFAULT_PLOT_OPTIONS`. See function
+            `set_plot_options` in the same module for behavior.
+        
+        See also
+        --------
+        nems.visualization.model.plot_model
+        nems.visualization.model.set_plot_options
+
+        Notes
+        -----
+        To prevent all default plot options from being used (for example, to
+        hard-code specific options in an overwritten `Layer.plot` method), set
+        `{'skip_plot_options': True}` in the returned dictionary.
+        
+        """
+        return {}
 
     # Passthrough *some* of the dict-like interface for Layer.parameters
     # NOTE: 'get' operations through this interface return Parameter instances,

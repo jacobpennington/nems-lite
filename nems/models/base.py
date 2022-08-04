@@ -6,7 +6,8 @@ import scipy.optimize
 
 from nems.registry import keyword_lib
 from nems.metrics import get_metric
-# temporarily import layers to make sure they're registered in keyword_lib
+from nems.visualization import plot_model
+# Temporarily import layers to make sure they're registered in keyword_lib
 import nems.layers  
 del nems.layers
 
@@ -56,11 +57,11 @@ class Model:
         """
         for layer in layers:
             layer.model = self  # each layer gets a reference to parent Model
-            key = name = layer.name
+            key = layer.name
             i = 0
             while key in self._layers:
                 # Avoid name clashes
-                key = f'{name}.{i}'
+                key = f'{layer.name}{i}'
                 i += 1
             self._layers[key] = layer
 
@@ -73,8 +74,9 @@ class Model:
         raise NotImplementedError
 
     def evaluate(self, input, state=None, input_name=None, state_name=None,
-                 output_name=None, return_full_data=True, n=None, time_axis=0,
-                 channel_axis=1, undo_reorder=True):
+                 output_name=None, n=None, time_axis=0, channel_axis=1,
+                 undo_reorder=True, return_full_data=True,
+                 save_layer_outputs=False):
         """Transform input(s) by invoking `Layer.evaluate` for each Layer.
 
         TODO: add more context, examples
@@ -107,9 +109,6 @@ class Model:
             If None : use `Model.default_output`.
             If str  : Use this name for each of the Layer's outputs
                       (incremented if multiple).
-        return_full_data : bool; default=True
-            If True, return a dictionary containing all input data and all
-            uniquely-keyed Layer outputs.
         n : int; optional.
             Evaluate the first `n` Layers (all by defualt).
         time_axis : int; default=0.
@@ -126,12 +125,25 @@ class Model:
         undo_reorder : bool; default=True.
             If True, and data axes were re-ordered, revert to the original
             ordering after evaluating. Set False to return the re-ordered data.
+        return_full_data : bool; default=True
+            If True, return a dictionary containing all input data and all
+            uniquely-keyed Layer outputs.
+        save_layer_outputs : bool; default=False.
+            If True, force `return_full_data=True`. Additionally, each output
+            will also be saved in data['_layer_outputs'] with the form:
+                {'_layer_outputs': {
+                    f'{Layer.name}.{data_key}: data_out}
+                }}
+            Such that the intermediate outputs of each `Layer.evaluate` are
+            guaranteed to be present in the output data, even if they would
+            normally be overwritten. This is useful for debugging and plotting,
+            but uses more memory.
 
         Returns
         -------
         data : ndarray, list, or dict
-            Format depends on `return_full_data` and the `evaluate` method of
-            the final layer in the model.
+            Type depends on `return_full_data` option and the return type of
+            the `evaluate` method of the final layer in the model.
 
         See also
         --------
@@ -166,7 +178,17 @@ class Model:
                 # Move time_axis to axis=0, channel_axis to axis=1
                 data[k] = np.moveaxis(v, [time_axis, channel_axis], [0, 1])
 
+        if save_layer_outputs:
+            if not return_full_data:
+                # TODO: log warning that return_full_data is going to be
+                #       overwritten since these options are incompatible.
+                pass
+            return_full_data = True
+            data['_layer_outputs'] = {}
+
         layers = self.layers[:n]
+        layer_keys = list(self.layers.keys())[:n]
+
         # Set first input if None
         all_inputs = [layer.input for layer in layers]
         if all_inputs[0] is None:
@@ -177,9 +199,9 @@ class Model:
             all_outputs[-1] = output_name
 
         # Loop through transformations
-        iter_zip = zip(layers, all_inputs, all_outputs)
+        iter_zip = zip(layers, layer_keys, all_inputs, all_outputs)
         data_out = None
-        for layer, next_input, next_output in iter_zip:
+        for layer, layer_key, next_input, next_output in iter_zip:
             if next_input is None:
                 # Use previous output
                 data_in = data_out
@@ -197,29 +219,10 @@ class Model:
                 args, kwargs = self._parse_input(next_input, data, data_out)
                 data_out = layer.evaluate(*args, **kwargs)
 
-                # Get data from all keys, in list order. Replace None entries
-                # with previous `data_out`.
-                # TODO: 
-                # data_in = [data[k] if k is not None else data_out
-                #            for k in next_input]
-                # data_out = layer.evaluate(*data_in)
-
-
-                # elif isinstance(next_input, dict):
-                #     # Map evaluate arguments to specific data keys. Replace None
-                #     # entries with previous `data_out`.
-                #     data_in = {k: (data[v] if v is not None else data_out)
-                #             for k, v in next_input.items()}
-                #     data_out = layer.evaluate(**data_in)
-
-            # else:
-            #     raise TypeError(
-            #         f"Unrecognized type for {layer.name}.input:"
-            #         f"{type(next_input)}"
-            #         )
-
-            # Cast output as list if only one array, for fewer checks elsewhere.
-            if not isinstance(data_out, (list, tuple)):
+            # Cast output as list, for consistency and fewer checks elsewhere.
+            if isinstance(data_out, tuple):
+                data_out = list(data_out)
+            if not isinstance(data_out, list):
                 data_out = [data_out]
 
             if next_output is not None:
@@ -235,17 +238,25 @@ class Model:
                         f"Unrecognized type for {layer.name}.output:"
                         f"{type(next_output)}"
                         )
+            else:
+                output_keys = [None]*len(data_out)
                 
-                for k, v in zip(output_keys, data_out):
-                    # Add singleton channel axis if needed.
-                    if v.ndim == 1:
-                        v = v[..., np.newaxis]
+            for k, v in zip(output_keys, data_out):
+                # Add singleton channel axis if needed.
+                if v.ndim == 1:
+                    v = v[..., np.newaxis]
+                if k is not None:
                     data[k] = v
+                if save_layer_outputs:
+                    data['_layer_outputs'][f'{layer_key}.{k}'] = v
+        # End loop
 
         if undo_reorder:
             # Rearrange axes if needed (reverse of above).
             if (time_axis != 0) or (channel_axis != 1):
                 for k, v in data.items():
+                    if k == '_layer_outputs':
+                        continue
                     # Move axis=0 to time_axis, axis=1 to channel_axis.
                     data[k] = np.moveaxis(v, [0, 1], [time_axis, channel_axis])
 
@@ -308,7 +319,8 @@ class Model:
             If ndarray, use this as the input to the first Layer. Otherwise,
             use keys specified by `input_name` or `Layer.input` to determine
             the first input.
-        target : np.ndarray or None; optional.
+        target : np.ndarray or list of np.ndarray; optional.
+            TODO: support list
             If ndarray, this will be the fitter's target data (i.e. try to
             match the model prediction to this). This option can only be used
             in conjunction with ndarray `input`. If other data is needed, use a
@@ -322,7 +334,7 @@ class Model:
             If None    : Refer to `Model.default_backend`.
             If 'scipy' : Use `scipy.optimize.minimize(method='L-BFGS-B')`.
             If 'tf'    : Use TensorFlow. Also aliased as 'tensorflow'.
-            # TODO: any other options we want to support?
+            TODO: any other options we want to support?
         cost_function : str or func; default='mse'
             Specifies which metric to use for computing error while fitting.
             If str  : Invoke `nems.metrics.get_metric(str)`.
@@ -406,7 +418,7 @@ class Model:
                     prediction = self.predict(input, **eval_kwargs)
                     cost = cost_function(prediction, target)
                     print(f"iteration {log_info['iteration']},"
-                          f" error is: {cost:.4f}")
+                          f" error is: {cost:.8f}...")
                 log_info['iteration'] += 1
             
             initial_parameters = self.get_parameter_vector(as_list=True)
@@ -424,7 +436,6 @@ class Model:
             # TODO: similar to scipy, last step should set new model parameters
             #       in-place
             raise NotImplementedError
-
 
     def score(self, prediction, target):
         # TODO: this should point to an independent utility function, but
@@ -653,6 +664,14 @@ class Model:
         """
         for layer in self.layers.get(*layer_keys):
             layer.unfreeze_parameters()
+
+    def plot(self, input, **kwargs):
+        """Alias for `nems.visualization.model.plot_model`.
+        
+        By default, the result of each `Layer.evaluate` will be shown.
+        
+        """
+        return plot_model(self, input, **kwargs)
 
     def __repr__(self):
         # Get important args/kwargs and string-format as call to constructor.
