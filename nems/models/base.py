@@ -64,6 +64,13 @@ class Model:
                 key = f'{layer.name}{i}'
                 i += 1
             self._layers[key] = layer
+            # Also update `Layer.name` so that there's no mismatch between
+            # a Layer's name and its key in the Model.
+            layer.name = key
+
+    def get_layer_index(self, name):
+        """Get integer index for Layer with `.name == name`."""
+        return list(self.layers.keys()).index(name)
 
     def get_layer(self, key):
         """Get one Layer. Key can be int or string (`Layer.name`)."""
@@ -187,8 +194,6 @@ class Model:
             data['_layer_outputs'] = {}
 
         layers = self.layers[:n]
-        layer_keys = list(self.layers.keys())[:n]
-
         # Set first input if None
         all_inputs = [layer.input for layer in layers]
         if all_inputs[0] is None:
@@ -199,9 +204,9 @@ class Model:
             all_outputs[-1] = output_name
 
         # Loop through transformations
-        iter_zip = zip(layers, layer_keys, all_inputs, all_outputs)
+        iter_zip = zip(layers, all_inputs, all_outputs)
         data_out = None
-        for layer, layer_key, next_input, next_output in iter_zip:
+        for layer, next_input, next_output in iter_zip:
             if next_input is None:
                 # Use previous output
                 data_in = data_out
@@ -248,7 +253,7 @@ class Model:
                 if k is not None:
                     data[k] = v
                 if save_layer_outputs:
-                    data['_layer_outputs'][f'{layer_key}.{k}'] = v
+                    data['_layer_outputs'][f'{layer.name}.{k}'] = v
         # End loop
 
         if undo_reorder:

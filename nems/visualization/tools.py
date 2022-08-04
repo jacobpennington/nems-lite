@@ -11,15 +11,33 @@ def ax_remove_box(axes=None):
     axes.spines['right'].set_visible(False)
     axes.spines['top'].set_visible(False)
 
-def ax_bins_to_seconds(axes=None, time_axis='x', sampling_rate=1,
+def ax_bins_to_seconds(axes=None, sampling_rate=1.0, time_axis='x',
                        conversion_factor=1.0, decimals=2):
     """Change tick labels on time axis from bins to seconds.
     
-    TODO: document parameters
+    Parameters
+    ----------
+    axes : matplotlib.axes.Axes; optional.
+        Axes to modify. If not provided, `plt.gca()` will be used.
+    sampling_rate : float; default=1.0.
+        Rate (in Hz) at which data on axes were collected.
+    time_axis : str; default='x'.
+        'x' or 'y', the axis on `axes` that represents time.
+    conversion_factor : int or float; default=1.0.
+        Multiply seconds by this number to get different units. Floating point
+        values must correspond to rational numbers. Scientific notation may only
+        be used for multiples of 10, and will be converted to an integer.
+        Ex: `conversion_factor=1000` to get units of milliseconds.
+            `conversion_factor=1/60` to get units of minutes.
+    decimals : int; default=2.
+        Number of decimal places to show on new tick labels.
     
     """
     if axes is None:
         axes = plt.gca()
+    if (conversion_factor % 10) == 0:
+        # re-cast scientific notation
+        conversion_factor = int(conversion_factor)  
 
     # Get axes methods based on time_axis (x or y)
     tick_getter = getattr(axes, f'get_{time_axis}ticks')

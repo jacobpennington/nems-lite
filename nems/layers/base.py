@@ -153,6 +153,8 @@ class Layer:
         self.initial_priors = priors
         self.initial_bounds = bounds
         self.shape = shape
+        # In the event of a name clash in a Model, an integer will be appended
+        # to `Layer.name` to ensure that all Layer names are unique.
         if name is None:
             name = self.default_name
         self.name = name
@@ -651,12 +653,16 @@ class Layer:
         ----------
         output : list of ndarray
             Data returned by `Layer.evaluate`.
-        fig : matplotlib.pyplot.figure.Figure; optional.
+        fig : matplotlib.figure.Figure; optional.
             The figure on which the plot will be rendered. If not provided, a
             new figure will be generated.
         plot_kwargs : dict
             Additional keyword arguments to be supplied to
-            `matplotlib.pyplot.axes.plot`.
+            `matplotlib.axes.Axes.plot`.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
 
         See also
         --------
@@ -690,7 +696,7 @@ class Layer:
         >>> layer.plot(output)
         
         """
-        return plot_layer(self, output, fig=fig, **plot_kwargs)
+        return plot_layer(output, fig=fig, **plot_kwargs)
 
     @property
     def plot_kwargs(self):
