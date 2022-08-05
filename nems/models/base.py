@@ -1,6 +1,3 @@
-from operator import itemgetter
-from functools import partial
-
 import numpy as np
 import scipy.optimize
 
@@ -26,7 +23,7 @@ class Model:
         self._layers = {}  #  layer.name : layer obj, increment on clashes
         if layers is not None:
             self.add_layers(*layers)
-        self.name = name if name is not None else 'unnamed Model'
+        self.name = name if name is not None else 'UnnamedModel'
 
     @property
     def layers(self):
@@ -83,7 +80,7 @@ class Model:
     def evaluate(self, input, state=None, input_name=None, state_name=None,
                  output_name=None, n=None, time_axis=0, channel_axis=1,
                  undo_reorder=True, return_full_data=True,
-                 save_layer_outputs=False):
+                 save_layer_outputs=False, save_data_map=False):
         """Transform input(s) by invoking `Layer.evaluate` for each Layer.
 
         TODO: add more context, examples
@@ -139,12 +136,20 @@ class Model:
             If True, force `return_full_data=True`. Additionally, each output
             will also be saved in data['_layer_outputs'] with the form:
                 {'_layer_outputs': {
-                    f'{Layer.name}.{data_key}: data_out}
+                    f'{Layer.name}.{data_key}: eval_out}
                 }}
             Such that the intermediate outputs of each `Layer.evaluate` are
             guaranteed to be present in the output data, even if they would
             normally be overwritten. This is useful for debugging and plotting,
             but uses more memory.
+        save_data_map : bool; default=False.
+            If True, data['_data_map'] will contain the evaluated `input_map`
+            returned by `Model.evaluate_input_map`. This nested dictionary
+            contains one key per Layer with the form:
+            `{layer.name: {'args': [...], 'kwargs': {...}, 'out': [...]}`
+            where entries in the nested containers correspond to keys in `data`.
+            Similar to `save_layer_outputs`, this option can be helpful for
+            debugging (but uses much less additional memory).
 
         Returns
         -------
@@ -155,22 +160,25 @@ class Model:
         See also
         --------
         nems.layers.base.Layer.evaluate
+        nems.models.base.Model.get_input_map
+        nems.models.base.Model.evaluate_input_map
         
         """
-        if input_name is None:
-            input_name = self.default_input
-        if output_name is None:
-            output_name = self.default_output
-        if state_name is None:
-            state_name = self.default_state
 
+        # Get input keys corresponding to *args and **kwargs for each layer,
+        # and replace `input_name, state_name` with defaults if they are None.
+        input_map, input_name, state_name = self.get_input_map(
+            n, input_name, state_name
+            )
+
+        # Initialize `data` dictionary.
         if isinstance(input, np.ndarray):
             data = {input_name: input}
             if state is not None:
                 data[state_name] = state
         else:
             # Arrays in shallow copy will share memory, but the new data
-            # dictionary will end up with additional keys.
+            # dictionary will end up with additional keys after evaluation.
             data = input.copy()
 
         # Rearrange and/or add axes if needed.
@@ -193,68 +201,12 @@ class Model:
             return_full_data = True
             data['_layer_outputs'] = {}
 
-        layers = self.layers[:n]
-        # Set first input if None
-        all_inputs = [layer.input for layer in layers]
-        if all_inputs[0] is None:
-            all_inputs[0] = input_name
-        # Set last output if None
-        all_outputs = [layer.output for layer in layers]
-        if all_outputs[-1] is None:
-            all_outputs[-1] = output_name
-
-        # Loop through transformations
-        iter_zip = zip(layers, all_inputs, all_outputs)
-        data_out = None
-        for layer, next_input, next_output in iter_zip:
-            if next_input is None:
-                # Use previous output
-                data_in = data_out
-                state_in = {}
-                if (layer.state_name is not None):
-                    state_in[layer.state_name] = data[state_name]
-                data_out = layer.evaluate(*data_in, **state_in)
-            elif isinstance(next_input, str):
-                # Get data from one key
-                data_in = data[next_input]
-                data_out = layer.evaluate(data_in)
-            else:
-                if isinstance(next_input, dict):
-                    next_input = [next_input]
-                args, kwargs = self._parse_input(next_input, data, data_out)
-                data_out = layer.evaluate(*args, **kwargs)
-
-            # Cast output as list, for consistency and fewer checks elsewhere.
-            if isinstance(data_out, tuple):
-                data_out = list(data_out)
-            if not isinstance(data_out, list):
-                data_out = [data_out]
-
-            if next_output is not None:
-                if isinstance(next_output, str):
-                    output_keys = [
-                        f"{next_output}.{i}" if i != 0 else f"{next_output}"
-                        for i in range(len(next_output))
-                        ]
-                elif isinstance(next_output, list):
-                    output_keys = next_output
-                else:
-                    raise TypeError(
-                        f"Unrecognized type for {layer.name}.output:"
-                        f"{type(next_output)}"
-                        )
-            else:
-                output_keys = [None]*len(data_out)
-                
-            for k, v in zip(output_keys, data_out):
-                # Add singleton channel axis if needed.
-                if v.ndim == 1:
-                    v = v[..., np.newaxis]
-                if k is not None:
-                    data[k] = v
-                if save_layer_outputs:
-                    data['_layer_outputs'][f'{layer.name}.{k}'] = v
-        # End loop
+        data_map, last_out = self.evaluate_input_map(
+            input_map, data, output_name=output_name,
+            save_layer_outputs=save_layer_outputs
+            )
+        if save_data_map:
+            data['_data_map'] = data_map
 
         if undo_reorder:
             # Rearrange axes if needed (reverse of above).
@@ -266,36 +218,210 @@ class Model:
                     data[k] = np.moveaxis(v, [0, 1], [time_axis, channel_axis])
 
         if not return_full_data:
-            data = data_out
+            data = last_out
         return data
 
-    def _parse_input(self, next_input, data, previous_output):
-        """Map `Layer.input` to data. Internal for `Model.evaluate`."""
+    def get_input_map(self, n=None, input_name=None, state_name=None):
+        """Get each `Layer.input` formatted as arguments for `Layer.evaluate`.
+        
+        Returns {'layer.name': {'args': [...], 'kwargs': {...}, 'out': []}
+        So that both Model.evaluate and TF model builder can use this.
+        
+        """
+        if input_name is None:
+            input_name = self.default_input
+        if state_name is None:
+            state_name = self.default_state
+
+        input_map = {}
+        for layer in self.layers[:n]:
+            next_input = layer.input
+            if not isinstance(next_input, list):
+                next_input = [next_input]
+            args, kwargs = self._parse_input(
+                layer, next_input, input_name, state_name
+                )
+            input_map[layer.name] = {'args': args, 'kwargs': kwargs, 'out': []}
+            input_name = None  # only used for first layer
+
+        return input_map, input_name, state_name
+
+    def _parse_input(self, layer, next_input, input_name, state_name):
+        """Map `Layer.input` to *args and **kwargs for `Layer.evaluate`.
+        
+        Internal for `Model.get_input_map`.
+        
+        Returns
+        -------
+        args : list
+            Keys to arrays in `data` that correspond to positional arguments
+            for `Layer.evaluate`.
+        kwargs : dict
+            Key-value pairs where keys correspond to names of keyword arguments
+            for `Layer.evaluate`, and values correspond to keys for arrays
+            stored in `data`.
+        
+        """
         args = []
         kwargs = {}
         for key in next_input:
             if key is None:
-                if previous_output is None:
-                    raise ValueError(
-                        "Cannot determine first input for Model, must specify "
-                        "either `input_name` or `FirstLayer.input`."
-                        )
-                args.append(previous_output)
-            elif isinstance(key, str):
-                args.append(data[key])
-            elif isinstance(key, list):
-                args.append([data[k] for k in key])
+                # NOTE: This code will not be reached for None keys inside
+                #       a dictionary `Layer.input`. In that case, data keys for
+                #       state and first-layer inputs should be specified in
+                #       the dictionary.
+                args.append(input_name)  # still None unless first layer
+                if layer.state_name is not None:
+                    kwargs[layer.state_name] = state_name
             elif isinstance(key, dict):
-                kwarg_keys = key.keys()
-                data_keys = key.values()
-                vals, _ = self._parse_input(data_keys, data, previous_output)
-                kwargs.update({k: v for k, v in zip(key.keys(), vals)})
+                kwargs.update({k: v for k, v in key.items()})
             else:
-                raise TypeError(
-                    f"Unrecognized input type: {type(next_input)}"
-                    )
+                args.append(key)
 
         return args, kwargs
+
+
+    def evaluate_input_map(self, input_map, data, output_name=None,
+                           save_layer_outputs=False):
+        """TODO: docs
+        
+        
+        """
+
+        if output_name is None:
+            output_name = self.default_output
+
+        last_layer_name = list(input_map.keys())[-1]
+        eval_out = None
+        for layer_name in input_map:
+            layer = self.layers[layer_name]
+            next_output = layer.output
+            # Last layer's output must be saved
+            if (layer_name == last_layer_name) and (next_output is None):
+                next_output = output_name
+
+            # Get arrays corresponding to data keys in input_dict.
+            eval_args, eval_kwargs, _ = self.layer_data_from_map(
+                data, input_map, layer_name, eval_out
+                )
+
+            # Generate layer output
+            eval_out = layer.evaluate(*eval_args, **eval_kwargs)
+            if (eval_out is None) or (len(eval_out) == 0):
+                raise ValueError(f"Layer {layer_name} did not return anything.")
+            # Cast output as list, for consistency and fewer checks elsewhere.
+            if isinstance(eval_out, tuple):
+                eval_out = list(eval_out)
+            if not isinstance(eval_out, list):
+                eval_out = [eval_out]
+
+            # Determine keys for (possibly) saving `eval_out` in `data`,
+            output_keys = self._parse_output(layer, next_output, eval_out)
+            input_map[layer_name]['out'] = output_keys
+
+            for k, v in zip(output_keys, eval_out):
+                # Add singleton channel axis if needed.
+                if v.ndim == 1:
+                    v = v[..., np.newaxis]
+                if k is not None:
+                    data[k] = v
+                if save_layer_outputs:
+                    # Save all intermediate outputs with unique keys
+                    data['_layer_outputs'][f'{layer.name}.{k}'] = v
+        # End loop
+
+        return input_map, eval_out
+
+    def _parse_output(self, layer, next_output, eval_out):
+        """Determine where/whether to save `eval_out` in `data`.
+        
+        Internal for `evaluate_input_map`.
+
+        Returns
+        -------
+        output_keys : list
+            Entries will be all None (`eval_out` is not saved) or all strings
+            (`data[string] = eval_out`). If `next_output` is a string and
+            `len(eval_out) > 1`, then that string will be incremented in the
+            form of `string.{i}` to get a unique key for each output.
+        
+        """
+        
+        if next_output is not None:
+            if isinstance(next_output, str):
+                output_keys = [
+                    f"{next_output}.{i}" if i != 0 else f"{next_output}"
+                    for i in range(len(eval_out))
+                    ]
+            elif isinstance(next_output, list):
+                output_keys = next_output
+            else:
+                raise TypeError(
+                    f"Unrecognized type for {layer.name}.output:"
+                    f"{type(next_output)}"
+                    )
+        else:
+            output_keys = [None]*len(eval_out)
+        
+        return output_keys
+
+
+    def layer_data_from_map(self, data, data_map, layer_name, last_out=None):
+        """TODO: docs."""
+        layer_map = data_map[layer_name]
+        missing_input = ("Cannot determine Layer input in Model.evaluate, \n"
+                         f"specify `last_out` or `{layer_name}.input`.")
+
+        args = []
+        for a in layer_map['args']:
+            if a is None:
+                # Supply each of the previous outputs as a separate input,
+                # i.e. `layer.evaluate(*last_out)`.
+                if last_out is None:
+                    raise ValueError(missing_input)
+                args.extend(last_out)
+            elif isinstance(a, list):
+                # Supply a list of arrays at all keys as a single argument,
+                # i.e. `layer.evaluate([array1, array2, ...])`.
+                args.append([data[k] for k in a])
+            else: # (a should be a string)
+                # Add one array to arguments,
+                # i.e. `layer.evaluate(array)`.
+                args.append(data[a])
+
+        kwargs = {}
+        for k, v in layer_map['kwargs'].items():
+            if v is None:
+                # Supply keyword `k` with a list of the previous outputs,
+                # i.e. `layer.evaluate(k=[out1, out2, ...])`.
+                if last_out is None:
+                    raise ValueError(missing_input)
+                kwargs[k] = last_out
+            elif isinstance(v, list):
+                # Supply keyword `k` with a list of the indicated arrays,
+                # i.e. `layer.evaluate(k=[array1, array2, ...])`.
+                kwargs[k] = [data[_k] for _k in v]
+            else: # (v should be a string)
+                # Supply keyword `k` with a single array,
+                # i.e. `layer.evaluate(k=array1)`.
+                kwargs[k] = data[v]
+
+        # `layer_map['out']` will be empty until that layer gets evaluated,
+        out = []
+        for o in layer_map['out']:
+            if o is None:
+                # If one output key is None, all of them will be None, so we
+                # can skip the loop since these arrays simply don't exist in
+                # `data`. The only way to get a reference to these arrays
+                # outside of evaluation is to use `save_layer_outputs=True`
+                # and check `data['_layer_outputs']`.
+                out = layer_map['out']
+                break
+            else: # o should be a string
+                out.append(data[o])
+
+        return args, kwargs, out
+
 
     def predict(self, input, return_full_data=False, **eval_kwargs):
         """As `Model.evaluate`, but return only the last output by default."""
@@ -678,6 +804,8 @@ class Model:
         """
         return plot_model(self, input, **kwargs)
 
+    # TODO: make this __str__, shorten __repr__ to only show the headers
+    #       (same for Layer, Phi, Parameter)
     def __repr__(self):
         # Get important args/kwargs and string-format as call to constructor.
         # (also attrs, TODO)

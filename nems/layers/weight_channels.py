@@ -93,6 +93,20 @@ class WeightChannels(Layer):
         """
         return [x @ self.coefficients for x in inputs]
 
+    # TODO: should call() still use arbitrary number of *inputs?
+    #       no use-case for batch/samples since TF handles that separately.
+    def as_tensorflow_layer(self):
+        import tensorflow as tf
+        from nems.tf import get_tf_class
+
+        def call(self, inputs):
+            transposed = tf.transpose(self.coefficients)
+            return tf.nn.conv1d(inputs, tf.expand_dims(transposed, 0), stride=1,
+                                padding='SAME')
+        
+        return get_tf_class(self, call=call)
+
+
     @layer('wc')
     def from_keyword(keyword):
         """Construct WeightChannels (or subclass) from keyword.

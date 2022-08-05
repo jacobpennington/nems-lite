@@ -64,6 +64,11 @@ class StateGain(Layer):
             be concatenated along axis 1 in the order they are provided.
 
         """
+        # TODO: probably a more pythonic way to set this requirement.
+        if inputs == ():
+            raise ValueError(f"StateGain(name={self.name}) received no inputs.")
+
+        # TODO: take this out? sounds like it woudln't be super useful.
         if isinstance(state, list):
             # Concatenate along channel axis
             state = np.concatenate(state, axis=1)

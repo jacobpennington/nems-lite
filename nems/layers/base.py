@@ -7,8 +7,6 @@ Parameter : Low-level representation of individual parameters.
 
 """
 
-import json
-
 import numpy as np
 
 from nems.registry import layer
@@ -91,6 +89,9 @@ class Layer:
             `Model.evaluate`, then `state` will be added to other inputs as a
             keyword argument, i.e.: `layer.evaluate(*inputs, **state)`.
 
+        Warnings
+        --------
+
         See also
         --------
         nems.models.base.Model
@@ -171,6 +172,8 @@ class Layer:
         if bounds is not None:
             self.set_bounds(**bounds)
 
+        # TODO: rename this to state_kwarg to avoid confusion with state_name
+        #       in Model.evaluate. Have to change in a few other places as well.
         self.state_name = None
 
     @property
@@ -304,6 +307,11 @@ class Layer:
         """
         return Phi()
 
+    # TODO:
+    def _evaluate_hook(self):
+        # Move iteration on multiple inputs outisde of .evaluate
+        pass
+
     def evaluate(self, *args, **kwargs):  
         """Applies some mathematical operation to the argument(s).
         
@@ -374,8 +382,10 @@ class Layer:
         """
         return self.evaluate.__doc__
 
-    def tensorflow_layer(self):
-        """Build an equivalent `Tensorflow.keras.layers.Layer` representation.
+
+    # TODO: consider making this a property, if no args end up being necessary
+    def as_tensorflow_layer(self):
+        """Build an equivalent TensorFlow layer.
 
         TODO: How would this fit into the arbitrary input/output scheme that
               .evaluate() uses for scipy optimization? Maybe it can't, since
@@ -385,10 +395,24 @@ class Layer:
               the layer class? (probably with some frozen kwargs). Depends
               on how the higher-level model builder is formated.
 
+        Returns
+        -------
+        tf.keras.layers.Layer
+
+        Notes
+        -----
+        Subclasses should import TensorFlow modules inside this method, *not*
+        at the top of the module. This is done to ensure that TensorFlow does
+        not need to be installed unless it is being used.
+
         """
         raise NotImplementedError(
             f'{self.__class__} has not defined a Tensorflow implementation.'
             )
+
+    def as_tf(self):
+        """Alias for `as_tensorflow_layer`. This should not be overwritten."""
+        return self.as_tensorflow_layer()
 
     def get_parameter_values(self, *parameter_keys, as_dict=False):
         """Get all parameter values, formatted as a list or dict of arrays.
@@ -792,6 +816,8 @@ class Layer:
         header = f"{type(self).__name__}({self_only})\n"
         equal_break = "="*32
         string = header + equal_break + "\n"
+        if self.state_name is not None:
+            string += f".state_name:  {self.state_name}\n"
         string += ".parameters:\n\n"
         string += self.parameters.__repr__()
         string += equal_break
@@ -1305,7 +1331,7 @@ class Phi:
         self._dict[key].update(val)
 
     def __iter__(self):
-        return iter(self._dict)
+        return iter(self._dict.values())
 
     def keys(self):
         return self._dict.keys()
