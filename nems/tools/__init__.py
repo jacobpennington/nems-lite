@@ -12,10 +12,8 @@ TODO: Anything that used to be in nems.utils.py should go in this directory,
 Contents
 --------
     `json.py` : Ensure proper json-ification of Models, Layers, etc.
-    # TODO: may end up with a separate plotting library, in which case these
-    #       tools should be moved there.
-    `plotting.py` : Miscellaneous tools for assisting with visualization.
+                NOTE: tools from `json.py` should *not* be imported here
+                (for the `nems.tools` API), as this can easily cause circular
+                imports.
 
 """
-
-from .json import nems_to_json, nems_from_json, NEMSEncoder, NEMSDecoder
