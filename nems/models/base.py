@@ -234,15 +234,16 @@ class Model:
             state_name = self.default_state
 
         input_map = {}
+        _input_name = input_name
         for layer in self.layers[:n]:
             next_input = layer.input
             if not isinstance(next_input, list):
                 next_input = [next_input]
             args, kwargs = self._parse_input(
-                layer, next_input, input_name, state_name
+                layer, next_input, _input_name, state_name
                 )
             input_map[layer.name] = {'args': args, 'kwargs': kwargs, 'out': []}
-            input_name = None  # only used for first layer
+            _input_name = None  # only used for first layer
 
         return input_map, input_name, state_name
 

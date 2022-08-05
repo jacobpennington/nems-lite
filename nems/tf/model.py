@@ -27,14 +27,16 @@ def build_model(nems_model, tf_layers, input, batch_size=None):
         tf_inputs.append(tf_in)
 
     tf_outputs = []
+    input_map = nems_model.get_input_map()  # input, output_name?
+    for layer in tf_layers:
+        name = layer.name  # is this actually here?
+        # get inputs that match this name based on input map
+
     # TODO: iterate through tf_layers, call tf_layer(previous_output) to get
     #       next output. But need to figure out input/output mapping just like
     #       with `Model.evaluate`.
     #       Probably best to start by re-thinking `Model.evaluate`, write it in
     #       a way that's portable so it can be re-used here.
-
-    #       possible snag: NEMS layers can depend on data names that don't exist
-    #       in input. Not seeing a way to do that here.
 
     # TODO: make this work with state as the first layer
     # outputs = stim_input
