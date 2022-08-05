@@ -77,6 +77,14 @@ class Model:
         """TODO: add layer at specific integer index."""
         raise NotImplementedError
 
+    # TODO: maybe move the details of the evaluate implementation somewhere
+    #       else, like the bottom of the class? They (the next 6 methods)
+    #       take up a lot of space and make it harder to scroll through to check
+    #       implementations of simple interfacing methods.
+    #
+    #       Alternatively, when implementing `_evaluate_hook` (or whatever it
+    #       gets named) for `Layer`, maybe some of these details could be
+    #       offloaded there.
     def evaluate(self, input, state=None, input_name=None, state_name=None,
                  output_name=None, n=None, time_axis=0, channel_axis=1,
                  undo_reorder=True, return_full_data=True,
@@ -224,8 +232,32 @@ class Model:
     def get_input_map(self, n=None, input_name=None, state_name=None):
         """Get each `Layer.input` formatted as arguments for `Layer.evaluate`.
         
-        Returns {'layer.name': {'args': [...], 'kwargs': {...}, 'out': []}
-        So that both Model.evaluate and TF model builder can use this.
+        Parameters
+        ----------
+        n : int; optional.
+            Map the first `n` Layers (all by defualt).
+        input_name : str; optional.
+            Specifies which data stream should be provided as input to the
+            first layer. See `Model.evaluate` for details.
+        state_name : str; optional.
+            Data key for `state`, if given.
+
+        Returns
+        -------
+        (input_map, input_name, state_name) : (dict, str, str)
+            `input_map` has the following structure, with one key per Layer:
+            {'layer.name': {'args': [...], 'kwargs': {...}, 'out': []},
+            where 'args' and 'kwargs' refer to positional and keyword arguments
+            for `Layer.evaluate` and `out` refers to the values returned by
+            `Layer.evaluate`.
+
+        See also
+        --------
+        nems.models.base.Model.evaluate
+
+        Examples
+        --------
+        TODO
         
         """
         if input_name is None:
@@ -284,8 +316,33 @@ class Model:
 
     def evaluate_input_map(self, input_map, data, output_name=None,
                            save_layer_outputs=False):
-        """TODO: docs
+        """Evaluate each Layer in `input_map` and set `input_map['out']`.
         
+        Parameters
+        ----------
+        input_map : dict.
+            Mapping of data keys to `Layer.evaluate` arguments.
+            See `get_input_map` for details on structure.
+        data : dict of ndarray.
+            Input data for Model. See `Model.evaluate` for details on structure.
+        output_name : str; optional.
+            Output name to use for the final Layer if `Layer.output` is None.
+            If not specified, `Model.default_output` will be used.
+        save_layer_outputs : bool.
+            Specifies whether to save all intermediate outputs. See
+            `Model.evaluate` for details.
+
+        Returns
+        -------
+        (input_map, last_out) : (dict, list of ndarray)
+            `input_map` has the same structure as in `get_input_map`, but
+            `input_map['out']` will now be filled in. `last_out` is the value(s)
+            returned by the final Layer.
+
+        See also
+        --------
+        nems.models.base.Model.evaluate
+        nems.models.base.Model.get_input_map
         
         """
 
@@ -368,7 +425,29 @@ class Model:
 
 
     def layer_data_from_map(self, data, data_map, layer_name, last_out=None):
-        """TODO: docs."""
+        """Get arrays from `data` that correspond to `Layer.evaluate`.
+
+        Parameters
+        ----------
+        data : dict of ndarray.
+            Input data for Model. See `Model.evaluate` for details on structure.
+        data_map : dict
+            Mapping of data to args and kwargs for `Layer.evaluate`, 
+            and outputs of `Layer.evaluate`. See `get_input_map` for details
+            on structure.
+        layer_name : str
+            Name of the layer to get data for.
+        last_out : list of ndarray; optional.
+            Return value of `Layer.evaluate` for the previous Layer. Must be
+            provided if `Layer.input is None` or if `Layer.input` is a
+            dictionary and contains one or more None values.
+        
+        Returns
+        -------
+        (args, kwargs, out) : (list, dict, list)
+            Entries are ndarrays pulled from `data`.
+        
+        """
         layer_map = data_map[layer_name]
         missing_input = ("Cannot determine Layer input in Model.evaluate, \n"
                          f"specify `last_out` or `{layer_name}.input`.")
