@@ -3,7 +3,7 @@ import tensorflow as tf
 from tensorflow.keras import Input
 
 
-def build_model(nems_model, tf_layers, input, batch_size=None):
+def build_model(nems_model, tf_layers, input, batch_size=None, eval_kwargs=None):
     """Docs TODO
     
     Parameters
@@ -18,35 +18,61 @@ def build_model(nems_model, tf_layers, input, batch_size=None):
                18-channel spectrogram consisting of 10 trials of 1000 time bins.
     
     """
-
-    tf_input_dict = []
+    tf_input_dict = {}
     for k, v in input.items():
         # Skip trial/sample dimension when determining shape.
         tf_in = Input(shape=v.shape[1:], name=k, batch_size=batch_size,
                       dtype='float32')  # TODO: why hard-code float32?
-        tf_inputs.append(tf_in)
+        tf_input_dict[k] = tf_in
 
-    tf_outputs = []
-    input_map = nems_model.get_input_map()  # input, output_name?
+    # Get data mapping of inputs & outputs for each Layer.
+    # Remove first dimension of data before passing to `Model.evaluate`.
+    # `data_map` should be the same for all batches, so we only need to evaluate
+    # one batch.
+    input = {k: v[0, ...] for k, v in input.items()}
+    eval_kwargs = {} if eval_kwargs is None else eval_kwargs
+    data_map = nems_model.evaluate(
+        input, save_data_map=True, **eval_kwargs
+        )['_data_map']
+
+    last_output = None
+    tf_data = tf_input_dict.copy()  # Need to keep actual Inputs separate
     for layer in tf_layers:
-        name = layer.name  # is this actually here?
-        # get inputs that match this name based on input map
-
-    # TODO: iterate through tf_layers, call tf_layer(previous_output) to get
-    #       next output. But need to figure out input/output mapping just like
-    #       with `Model.evaluate`.
-    #       Probably best to start by re-thinking `Model.evaluate`, write it in
-    #       a way that's portable so it can be re-used here.
-
-    # TODO: make this work with state as the first layer
-    # outputs = stim_input
-    # for layer in self.model_layers:
-    #     if layer._STATE_LAYER:
-    #         outputs = layer([outputs, state_input])
-    #     else:
-    #         outputs = layer(outputs)
+        layer_inputs = []
+        layer_map = data_map[layer.name]
+        # .call method in TF layers only accepts a single `inputs` argument,
+        # can't directly specify inputs through keyword arguments and can't
+        # use lists of inputs. Instead, we have to combine all inputs into a
+        # single flattened list/tuple (which means Layer subclasses have to
+        # account for that when defining .call).
+        all_data_keys = layer_map['args'] + list(layer_map['kwargs'].values())
+        all_data_keys = np.array(all_data_keys).flatten().tolist()
+        for k in all_data_keys:
+            if k is None:
+                # Add last output
+                layer_inputs.append(last_output)
+            else:
+                # Add Input with matching key
+                layer_inputs.append(tf_data[k])
+        # TODO: does this mean all call methods need to expect a list, even
+        #       for just one key? (or add a hook here to unwrap singletons, if
+        #       TF doesn't do that automatically).
+        last_output = layer(layer_inputs)
+        
+        # Return of call can be Tensor or list/tuple of tensor.
+        # Layers will need to account for this when defining call.
+        if isinstance(last_output, (list, tuple)):
+            tf_data.update(
+                {k: v for k, v in zip(layer_map['out'], last_output)}
+                )
+        else:
+            out = layer_map['out'][0]
+            tf_data[out] = last_output
 
     tf_inputs = list(tf_input_dict.values())
+    # For outputs, get all data entries that aren't inputs
+    tf_outputs = [v for k, v in tf_data.items() if k not in tf_input_dict]
+
     model = tf.keras.Model(inputs=tf_inputs, outputs=tf_outputs,
                            name=nems_model.name)
 

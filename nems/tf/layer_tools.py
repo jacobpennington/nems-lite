@@ -6,7 +6,7 @@ from tensorflow.keras.layers import Layer
 def get_tf_class(nems_layer, **methods):
     class Layer(tf.keras.layers.Layer):
         def __init__(self, regularizer=None, *args, **kwargs):
-            super().__init__(*args, **kwargs)
+            super().__init__(name=nems_layer.name, *args, **kwargs)
             add_existing_weights(nems_layer, self, regularizer)
 
         @property

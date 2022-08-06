@@ -88,7 +88,8 @@ class Model:
     def evaluate(self, input, state=None, input_name=None, state_name=None,
                  output_name=None, n=None, time_axis=0, channel_axis=1,
                  undo_reorder=True, return_full_data=True,
-                 save_layer_outputs=False, save_data_map=False):
+                 save_layer_outputs=False, save_data_map=False,
+                 batch_size=None):
         """Transform input(s) by invoking `Layer.evaluate` for each Layer.
 
         TODO: add more context, examples
@@ -158,6 +159,8 @@ class Model:
             where entries in the nested containers correspond to keys in `data`.
             Similar to `save_layer_outputs`, this option can be helpful for
             debugging (but uses much less additional memory).
+        batch_size : int; optional.
+            TODO, still WIP
 
         Returns
         -------
@@ -172,6 +175,26 @@ class Model:
         nems.models.base.Model.evaluate_input_map
         
         """
+        if batch_size is not None:
+            current_args = locals()
+            current_args['batch_size'] = None
+            current_args.pop('self')  # otherwise self will be passed twice
+            # TODO: split data into batches along first axis, assumes
+            #       user has already separated data by trial or something else
+            #       and has shape (S, T, N) instead of (T,N) where S represents
+            #       number of samples/trials/whatever.
+            batches = []
+            for batch in batches:
+                batch_data = self.evaluate(**current_args)
+                # TODO: then what? I guess anything else would be handled
+                #       by the fitter.
+                # TODO: doing this loop here is a bit wasteful, since data_map
+                #       should be the same for every batch. If some of those
+                #       details were moved into Layers, that would help.
+                #       Ex: on first loop, Model gets Layer.input_map from
+                #       each Layer, evaluates them, combines them, stores that
+                #       as the map for every batch. Then eval just has to
+                #       pass in new data each time.
 
         # Get input keys corresponding to *args and **kwargs for each layer,
         # and replace `input_name, state_name` with defaults if they are None.
@@ -315,7 +338,7 @@ class Model:
 
 
     def evaluate_input_map(self, input_map, data, output_name=None,
-                           save_layer_outputs=False):
+                           save_layer_outputs=False, copy=False):
         """Evaluate each Layer in `input_map` and set `input_map['out']`.
         
         Parameters
@@ -331,6 +354,8 @@ class Model:
         save_layer_outputs : bool.
             Specifies whether to save all intermediate outputs. See
             `Model.evaluate` for details.
+        copy : bool.
+            If True, use a copy of `data` instead of modifying in-place.
 
         Returns
         -------
@@ -345,6 +370,8 @@ class Model:
         nems.models.base.Model.get_input_map
         
         """
+        if copy:
+            data = data.copy()
 
         if output_name is None:
             output_name = self.default_output

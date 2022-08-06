@@ -91,18 +91,32 @@ class WeightChannels(Layer):
             Length of list matches number of inputs.
         
         """
+        # TODO: this won't use DxDxD shape as intended. Could do a for loop
+        #       for last dimension (if dim >2) similar to FIR, but that would
+        #       probable be slow. Could also take product of last N dimensions
+        #       (similar to old FIR)
+        #       - from numpy matmul docs:
+        #         "If either argument is N-D, N > 2, it is treated as a stack
+        #          of matrices residing in the last two indexes and broadcast
+        #          accordingly."
+        #       - Maybe this could solve the problem if we reshape the data
+        #         accordingly?
+
         return [x @ self.coefficients for x in inputs]
 
     # TODO: should call() still use arbitrary number of *inputs?
     #       no use-case for batch/samples since TF handles that separately.
     def as_tensorflow_layer(self):
+        """TODO: docs"""
         import tensorflow as tf
         from nems.tf import get_tf_class
 
         def call(self, inputs):
-            transposed = tf.transpose(self.coefficients)
-            return tf.nn.conv1d(inputs, tf.expand_dims(transposed, 0), stride=1,
-                                padding='SAME')
+            print(type(inputs))
+            return tf.nn.conv1d(
+                inputs, tf.expand_dims(self.coefficients, 0), stride=1,
+                padding='SAME'
+                )
         
         return get_tf_class(self, call=call)
 
