@@ -911,9 +911,42 @@ class Model:
         """
         return plot_model(self, input, **kwargs)
 
-    # TODO: make this __str__, shorten __repr__ to only show the headers
-    #       (same for Layer, Phi, Parameter)
+    # added .summary() to mirror tensorflow models, for intuitive comparisons.
+    def summary(self):
+        """Prints long-form model description (alias for `print(Model)`)."""
+        print(self)
+
+    def __str__(self):
+        header, tilde_break, attr_string = self._repr_helper()
+        string = header
+        string += tilde_break
+        string += attr_string
+        string += ".layers:\n\n"
+        # Extra equal_break above first layer, so that its heading looks the
+        # same as subsequent layers.
+        string += "="*32 + "\n"
+        for i, layer in enumerate(self.layers):
+            if i != 0:
+                # Add blank line between layers if more than one
+                string += '\n'
+            string += str(layer)
+        string += "\n" + tilde_break
+
+        return string
+
     def __repr__(self):
+        header, tilde_break, _ = self._repr_helper()
+        string = header
+        string += tilde_break
+        for i, layer in enumerate(self.layers):
+            if i != 0:
+                string += "\n\n" # break between layers
+            string += layer.__repr__()
+        string += "\n" + tilde_break
+
+        return string
+
+    def _repr_helper(self):
         # Get important args/kwargs and string-format as call to constructor.
         # (also attrs, TODO)
         args = []    # TODO  --  what should be here?
@@ -932,21 +965,8 @@ class Model:
         header = f"{type(self).__name__}({args_string}{kwargs_string})\n"
         tilde_break = "~"*64 + "\n"
 
-        string = header
-        string += tilde_break
-        string += attr_string
-        string += ".layers:\n\n"
-        # Extra equal_breka above first layer, so that its heading looks the
-        # same as subsequent layers.
-        string += "="*32 + "\n"
-        for i, layer in enumerate(self.layers):
-            if i != 0:
-                # Add blank line between layers if more than one
-                string += '\n'
-            string += layer.__repr__()
-        string += "\n" + tilde_break
+        return header, tilde_break, attr_string
 
-        return string
 
     @classmethod
     def from_keywords(cls, *keywords):

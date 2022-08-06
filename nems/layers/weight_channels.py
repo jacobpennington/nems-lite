@@ -99,13 +99,16 @@ class WeightChannels(Layer):
         #         "If either argument is N-D, N > 2, it is treated as a stack
         #          of matrices residing in the last two indexes and broadcast
         #          accordingly."
-        #       - Maybe this could solve the problem if we reshape the data
-        #         accordingly?
+        #       - Maybe this could solve the problem if we reshape coefficients
+        #         accordingly? Ex: (not working so far)
+        # if len(self.shape) > 2:
+        #     # (time, chans, ...) -> (..., time, chans)
+        #     c = np.moveaxis(self.coefficients.values, [0, 1], [-2, -1])
+        # else:
+        #     c = self.coefficients
 
         return [x @ self.coefficients for x in inputs]
 
-    # TODO: should call() still use arbitrary number of *inputs?
-    #       no use-case for batch/samples since TF handles that separately.
     def as_tensorflow_layer(self):
         """TODO: docs"""
         import tensorflow as tf
@@ -118,7 +121,6 @@ class WeightChannels(Layer):
                 )
         
         return get_tf_class(self, call=call)
-
 
     @layer('wc')
     def from_keyword(keyword):

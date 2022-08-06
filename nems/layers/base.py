@@ -805,7 +805,25 @@ class Layer:
         """
         return iter([self])
 
+    def __str__(self):
+        header, equal_break = self._repr_helper()
+        string = header + equal_break + "\n"
+        if self.state_name is not None:
+            string += f".state_name:  {self.state_name}\n"
+        string += ".parameters:\n\n"
+        string += str(self.parameters)
+        string += equal_break
+        return string
+
     def __repr__(self):
+        header, equal_break = self._repr_helper()
+        string = header + equal_break + "\n"
+        string += self.parameters.__repr__()
+        #string = "\n".join(string.split("\n")[:-2]) # remove last dash break
+        string += equal_break
+        return string
+
+    def _repr_helper(self):
         layer_dict = Layer().__dict__
         self_dict = self.__dict__
         # Get attributes that are not part of base class
@@ -813,15 +831,11 @@ class Layer:
         # then convert to string with "k=v" format
         self_only = ", ".join([f"{k}={v}" for k, v in self_dict.items()
                                if k not in layer_dict])
-        header = f"{type(self).__name__}({self_only})\n"
+        header = f"{type(self).__name__}(shape={self.shape}{self_only})\n"
         equal_break = "="*32
-        string = header + equal_break + "\n"
-        if self.state_name is not None:
-            string += f".state_name:  {self.state_name}\n"
-        string += ".parameters:\n\n"
-        string += self.parameters.__repr__()
-        string += equal_break
-        return string
+
+        return header, equal_break
+
 
     # Add compatibility for saving to .json
     def to_json(self):
@@ -1342,18 +1356,28 @@ class Phi:
     def values(self):
         return self._dict.values()
 
-    def __repr__(self):
+    def __str__(self):
         footer = f"Index: {self._index}\n" + "-"*16 + "\n"
         string = ""
         for i, p in enumerate(self._dict.values()):
             if i != 0:
                 # Add blank line between parameters if more than one
                 string += "\n"
-            string += p.__repr__()
+            string += str(p)
             string += footer
         string += "\n"
 
         return string
+
+    def __repr__(self):
+        dash_break = "-"*16 + "\n"
+        string = ""
+        for i, p in enumerate(self._dict.values()):
+            if i != 0:
+                string += dash_break
+            string += p.__repr__()
+        return string
+
 
     # Add compatibility for saving to .json
     def to_json(self):
@@ -1713,7 +1737,7 @@ class Parameter:
             p.freeze()
         return p
 
-    def __repr__(self):
+    def __str__(self):
         dash_break = "-"*16 + "\n"
         string = f"Parameter(name={self.name}, shape={self.shape})\n"
         string += dash_break
@@ -1724,6 +1748,11 @@ class Parameter:
         string += f"{self.values}\n"
         string += dash_break
         return string
+
+    def __repr__(self):
+        string = f"Parameter(name={self.name}, shape={self.shape})\n"
+        return string
+
 
     # Add compatibility with numpy ufuncs, len(), and other methods that
     # should point to `Parameter.values` instead of `Parameter`.
