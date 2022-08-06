@@ -112,7 +112,6 @@ class WeightChannels(Layer):
         from nems.tf import get_tf_class
 
         def call(self, inputs):
-            print(type(inputs))
             return tf.nn.conv1d(
                 inputs, tf.expand_dims(self.coefficients, 0), stride=1,
                 padding='SAME'

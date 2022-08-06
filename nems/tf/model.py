@@ -61,13 +61,12 @@ def build_model(nems_model, tf_layers, input, batch_size=None, eval_kwargs=None)
         
         # Return of call can be Tensor or list/tuple of tensor.
         # Layers will need to account for this when defining call.
-        if isinstance(last_output, (list, tuple)):
-            tf_data.update(
-                {k: v for k, v in zip(layer_map['out'], last_output)}
-                )
-        else:
-            out = layer_map['out'][0]
-            tf_data[out] = last_output
+        if not isinstance(last_output, (list, tuple)):
+            last_output = [last_output]
+        tf_data.update(
+            {k: v for k, v in zip(layer_map['out'], last_output)
+                if k is not None}  # indicates unsaved intermediate output
+            )
 
     tf_inputs = list(tf_input_dict.values())
     # For outputs, get all data entries that aren't inputs
