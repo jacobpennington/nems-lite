@@ -9,5 +9,6 @@ from .nonlinearity import LevelShift, DoubleExponential, RectifiedLinear, ReLU
 from .filter import FiniteImpulseResponse, FIR, STRF
 from .weight_channels import WeightChannels, GaussianWeightChannels
 from .state import StateGain
+from .numpy import NumPy
 
 from .base import Layer, Phi, Parameter
