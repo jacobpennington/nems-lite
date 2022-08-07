@@ -6,7 +6,7 @@ import scipy.signal
 from .base import Layer, Phi, Parameter
 from nems.registry import layer
 
-class FIR(Layer):
+class FiniteImpulseResponse(Layer):
     """Convolve linear filter(s) with input.
 
     Parameters
@@ -197,8 +197,11 @@ class FIR(Layer):
         return fir
 
 
-# Optional alias to use when FIR is applied to the full spectrogram.
-STRF = FIR
+# Aliases, STRF specifically for full-rank (but not enforced)
+class FIR(FiniteImpulseResponse):
+    pass
+class STRF(FiniteImpulseResponse):
+    pass
 
 
 ###############################################################################

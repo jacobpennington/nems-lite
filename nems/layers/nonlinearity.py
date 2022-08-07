@@ -274,4 +274,5 @@ class RectifiedLinear(StaticNonlinearity):
         return relu
 
 # Optional alias
-ReLU = RectifiedLinear
+class ReLU(RectifiedLinear):
+    pass
