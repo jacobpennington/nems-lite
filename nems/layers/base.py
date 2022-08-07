@@ -805,26 +805,36 @@ class Layer:
         if self.state_name is not None:
             string += f".state_name:  {self.state_name}\n"
         string += ".parameters:\n\n"
-        string += str(self.parameters)
-        string += equal_break
+        p_string = str(self.parameters)
+        string += p_string
+        if p_string != '':
+            # Only add an end-cap equal_break if there was at least one
+            # parameter to show
+            string += equal_break
         return string
 
     def __repr__(self):
         header, equal_break = self._repr_helper()
         string = header + equal_break + "\n"
-        string += self.parameters.__repr__()
-        #string = "\n".join(string.split("\n")[:-2]) # remove last dash break
-        string += equal_break
+        p_string = self.parameters.__repr__()
+        string += p_string
+        if p_string != '':
+            # Only add an end-cap equal_break if there was at least one
+            # parameter to show
+            string += equal_break
         return string
 
     def _repr_helper(self):
         layer_dict = Layer().__dict__
         self_dict = self.__dict__
-        # Get attributes that are not part of base class
-        # e.g. shape for WeightChannels
-        # then convert to string with "k=v" format
+        # Get attributes that are not part of base class, unless they start
+        # with an underscore, then convert to string with "k=v" format
         self_only = ", ".join([f"{k}={v}" for k, v in self_dict.items()
-                               if k not in layer_dict])
+                               if (k not in layer_dict) and not
+                               (k.startswith('_'))])
+        if self_only != "":
+            # Prepend comma to separate from shape
+            self_only = ", " + self_only
         header = f"{type(self).__name__}(shape={self.shape}{self_only})\n"
         equal_break = "="*32
 

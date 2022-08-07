@@ -17,10 +17,19 @@ class NumPy(Layer):
         include arrays supplied through `inputs` in `evaluate`.
     op_kwargs : dict; optional.
         Keyword arguments to supply to `np.{operation}`.
+    input, output, name : see docs for `Layer`.
     
     Returns
     -------
     ndarray or list of ndarray (see docs for {operation} at numpy.org).
+
+    Notes
+    -----
+    Unlike most Layer subclasses, NumPy Layers will not pass additional
+    keyword arguments to `Layer.__init__`. Instead, they are passed to
+    `np.{concatenate}`. Additionally, note that `parameters`, `bounds`,
+    `priors`, and `shape` cannot be set through initialization and have no
+    effect since NumPy Layers do not have any fittable parameters.
 
     Examples
     --------
@@ -34,11 +43,12 @@ class NumPy(Layer):
 
     """
 
-    def __init__(self, operation, *op_args, op_kwargs=None, **kwargs):
+    def __init__(self, operation, *op_args, input=None, output=None, name=None,
+                 **op_kwargs):
 
-        if 'name' not in kwargs:
-            kwargs['name'] = f'np.{operation}'
-        super().__init__(**kwargs)
+        if name is None:
+            name = f'np.{operation}'
+        super().__init__(input=input, output=output, name=name)
 
         self._operation = getattr(np, operation)
         self._args = op_args
@@ -57,35 +67,37 @@ class NumPy(Layer):
         ---------------
         {operation} : Name of numpy operation to use, ex: 'split', 'sum'.
             NOTE: This must be the first option, ex: `np.split.op2.op3...`
+        {value} : Positional arguments for `np.{operation}`.
+            Only literal, non-alpha value types are supported, such as `int`,
+            `tuple`, or `float` (see docs for `ast.literal_eval`). For an alpha
+            string argument (ex: 'full', 'same'), instantiate directly from
+            the NumPy Layer class.
         {key}{value} : Keyword arguments for `np.{operation}`.
             Only keys that are all alpha characters (like `axis`, `shape`, etc)
             are supported. For kwarg names with underscores, numeric characters,
-            etc, instantiate the Layer directly. Additionally, only literal
-            value types are supported, such as `int`, `tuple`, or `float`
-            (see docs for `ast.literal_eval`)
-
+            etc, instantiate the Layer directly.
         See also
         --------
         Layer.from_keyword
-
-        Notes
-        -----
-        Only keyword arguments are supported through `from_keyword`. If
-        arguments must be position for some reason, instantiate the Layer
-        directly.
         
         """
         # TODO: want to be able to do 'np.concatenate.axis1'
         options = keyword.split('.')
         operation = options[1]  # NOTE: this is hard-coded
 
-
+        args = []
         kwargs = {}
         for op in options[2:]:
             key = ''
             while op[0].isalpha():
                 key += op[0]
                 op = op[1:]
-            kwargs[key] = ast.literal_eval(op)
+            val = ast.literal_eval(op)
+            if key == '':
+                # treat as positional argument
+                args.append(val)
+            else:
+                # keyword argument
+                kwargs[key] = val
 
-        return NumPy(operation, op_kwargs=kwargs)
+        return NumPy(operation, *args, **kwargs)
