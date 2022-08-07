@@ -54,6 +54,8 @@ class Model:
         """
         for layer in layers:
             layer.model = self  # each layer gets a reference to parent Model
+            if layer.name is None:
+                layer.name = layer.default_name
             key = layer.name
             i = 0
             while key in self._layers:

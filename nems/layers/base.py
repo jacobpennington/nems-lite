@@ -156,8 +156,6 @@ class Layer:
         self.shape = shape
         # In the event of a name clash in a Model, an integer will be appended
         # to `Layer.name` to ensure that all Layer names are unique.
-        if name is None:
-            name = self.default_name
         self.name = name
         self.model = None  # pointer to parent ModelSpec
 
@@ -178,11 +176,7 @@ class Layer:
 
     @property
     def default_name(self):
-        """Get default name for Layer if `name` is not specified in `.__init__`.
-        
-        Base implementation defaults to `SubClass(shape=self.shape)`.
-
-        """
+        """Get default name for Layer, `SubClass(shape=self.shape)."""
         return f'{type(self).__name__}(shape={self.shape})'
 
     @layer('baseclass')

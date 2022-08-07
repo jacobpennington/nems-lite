@@ -216,6 +216,8 @@ def plot_model(model, input, target=None, n=None, select_layers=None,
             # Make room for titles
             subfig.subplots_adjust(top=0.8)
             name = layer.name
+            if name is None:
+                name = layer.default_name
             subfig.suptitle(f'({model.get_layer_index(name)}) {name}')
         if n_columns > 1:
             # For multiple columns, shrink width of axes a bit to make room for
