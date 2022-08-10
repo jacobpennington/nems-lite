@@ -57,8 +57,6 @@ class Model:
         """
         for layer in layers:
             layer.model = self  # each layer gets a reference to parent Model
-            if layer.name is None:
-                layer.name = layer.default_name
             key = layer.name
             i = 0
             while key in self._layers:
@@ -68,7 +66,7 @@ class Model:
             self._layers[key] = layer
             # Also update `Layer.name` so that there's no mismatch between
             # a Layer's name and its key in the Model.
-            layer.name = key
+            layer._name = key
 
     def get_layer_index(self, name):
         """Get integer index for Layer with `.name == name`."""

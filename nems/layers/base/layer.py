@@ -148,7 +148,8 @@ class Layer:
         # to `Layer.name` to ensure that all Layer names are unique.
         # TODO: make name property instead and save _name, default_name here.
         #       (so that other code doesn't need to check for None name)
-        self.name = name 
+        self._name = name 
+        self.default_name = f'{type(self).__name__}(shape={self.shape})'
         self.model = None  # pointer to parent ModelSpec
 
         if parameters is None:
@@ -169,9 +170,12 @@ class Layer:
         self.state_name = None
 
     @property
-    def default_name(self):
-        """Get default name for Layer, `SubClass(shape=self.shape)."""
-        return f'{type(self).__name__}(shape={self.shape})'
+    def name(self):
+        """Get Layer.name if specified, or `SubClass(shape=self.shape)."""
+        name = self._name
+        if name is None:
+            name = self.default_name
+        return name
 
     @layer('baseclass')
     @staticmethod

@@ -98,7 +98,7 @@ class KeywordRegistry:
         obj = kw.parse(kw_string)
         if (self.set_obj_name) and (obj.name is None):
             kw_head = kw_string.split('.')[0]
-            obj.name = kw_head
+            obj._name = kw_head
         return obj
 
     def __setitem__(self, kw_head, parse):
