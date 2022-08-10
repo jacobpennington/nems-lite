@@ -72,8 +72,8 @@ class Layer:
 
         Attributes
         ----------
-        state_name : str or None; optional.
-            If string, `state_name` will be interpreted as the name of an
+        state_arg : str or None; optional.
+            If string, `state_arg` will be interpreted as the name of an
             argument for `Layer.evaluate`. During Model evaluation, if
             `Layer.input is None` and a `state` array is provided to
             `Model.evaluate`, then `state` will be added to other inputs as a
@@ -164,10 +164,7 @@ class Layer:
             self.set_bounds(**bounds)
 
         self._map = None
-
-        # TODO: rename this to state_kwarg to avoid confusion with state_name
-        #       in Model.evaluate. Have to change in a few other places as well.
-        self.state_name = None
+        self.state_arg = None
 
     @property
     def name(self):
@@ -815,8 +812,8 @@ class Layer:
     def __str__(self):
         header, equal_break = self._repr_helper()
         string = header + equal_break + "\n"
-        if self.state_name is not None:
-            string += f".state_name:  {self.state_name}\n"
+        if self.state_arg is not None:
+            string += f".state_arg:  {self.state_arg}\n"
         string += ".parameters:\n\n"
         p_string = str(self.parameters)
         string += p_string

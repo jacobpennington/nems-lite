@@ -9,12 +9,12 @@ class DataMap:
 
         # Special check for adding state kwarg when no input is specified
         self.state_name = state_name
-        self.state_arg = layer.state_name
+        self.state_arg = layer.state_arg
         self.add_state = False
-        if (layer.input is None) and (layer.state_name is not None):
+        if (layer.input is None) and (layer.state_arg is not None):
             self.add_state = True
 
-        self.state = layer.state_name
+        self.state = layer.state_arg
         self.out = []
         self._build_input_map()  # assigns self.args, self.kwargs
 

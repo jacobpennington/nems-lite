@@ -20,7 +20,7 @@ class StateGain(Layer):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.state_name = 'state'  # see Layer.__init__
+        self.state_arg = 'state'  # see Layer.__init__ docs for details
 
     def initial_parameters(self):
         """Docs TODO
