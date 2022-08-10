@@ -21,10 +21,7 @@ class ShapeError(Exception):
         self.shapes = shapes
     def __str__(self):
         string = (
-            f"Shape mismatch in {type(self.layer).__name__}.evaluate.\n" 
-            "NOTE: Inputs to Model.evaluate need shape (time, n_chans, ...),\n"
-            "otherwise specify time_axis and channel_axis.\n"
-            )
+            f"Shape mismatch in {type(self.layer).__name__}.evaluate.\n")
         for k, v in self.shapes.items():
             string += f"{k} has shape: {v.__repr__()}\n"
         return string
