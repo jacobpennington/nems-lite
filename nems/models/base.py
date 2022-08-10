@@ -1031,3 +1031,49 @@ class _LayerDict:
 
     def __repr__(self):
         return self._dict.__repr__()
+
+
+# TODO: may not end up doing this, but sketching out the idea here.
+#       Essentially a watered-down Recording that handles data sanitation
+#       but otherwise acts as a dict, no epochs/splitting/etc. Possibly
+#       to/from json but would just be a wrapper for saving the dict, goal is
+#       for the class to be stateless except for ._data.
+class DataSet(dict):
+    def __init__(self, input, state=None, target=None, input_name=None,
+                 state_name=None, output_name=None, target_name=None,
+                 time_axis=0, channel_axis=1, undo_reorder=True):
+        # TODO: may not actually need all these kwargs, or may not need to
+        #       save them all as attrs
+        self.initialize_data(input, state, target)  # other kwargs too
+
+    def initialize_data(self, input):  # other kwargs too
+        # TODO: do stuff from Model._initialize_data to generate data
+        # TODO: 3 options for parsing default names:
+        #       1) do it in the model before creating DataSet, make input and
+        #          output names required.
+        #       2) do it here with reference to Model
+        #          (breaks statelessness, Model.default_<name> could change.
+        #           also breaks compartmentalization)
+        #       3) do it here with extra kwargs for defaults.
+        #       4) do it here and move defaults to be DataSet class attrs
+        #          (less convenient for users)
+        data = {'testing': [1,2,3]}
+        super().__init__(**data)  # enables __getitem__, __setitem__, etc.
+
+    def finalize_data(self):
+        # TODO: port Model._finalize_data() here.
+        pass
+
+    def passthrough_data_operations(self):
+        # TODO: (not a real method name) convenience wrapper for
+        #       `for array in data, get fn(array)`
+        #       and/or `for array in data, set array = fn(array)` (i.e. inplace)
+        #       For example, to apply the same jacknife indices to all arrays
+        pass
+
+    def other_sanitation(self):
+        # TODO: (not a real method name) what else would be useful?
+        pass
+
+    
+    
