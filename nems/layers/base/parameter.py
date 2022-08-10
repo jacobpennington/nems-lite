@@ -122,7 +122,7 @@ class Parameter:
         self.last_index = None
 
         self.is_frozen = False
-        self.is_permanent = True
+        self.is_permanent = False
     
     # TODO: any other tracking/upkeep that needs to happen with
     #       freezing/unfreezing, or is the flag sufficient?
