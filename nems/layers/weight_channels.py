@@ -117,6 +117,7 @@ class WeightChannels(Layer):
             else:
                 # Otherwise let the original error through.
                 raise e
+        return output
 
     def as_tensorflow_layer(self):
         """TODO: docs"""

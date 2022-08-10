@@ -122,7 +122,6 @@ class FiniteImpulseResponse(Layer):
         #       handle this?
         padding = np.zeros(shape=((filter_length-1, n_channels) + other_dims))
 
-        output = []
         filter_outputs = []
         for j in range(n_filters):
             c = coefficients[..., j]
@@ -130,12 +129,12 @@ class FiniteImpulseResponse(Layer):
             z = scipy.signal.convolve(input_with_padding, c, mode='valid')
             filter_outputs.append(z)
         # Output of each convolution should be (T,1), concatenate to (T,N).
-        out = np.concatenate(filter_outputs, axis=1)
-        # For data with dimension > 2, there will also be extra singleton
-        # axes, so squeeze those out.
+        output = np.concatenate(filter_outputs, axis=1)
         if len(other_dims) > 0:
-            out = out.squeeze()
-        output.append(out)
+            # There will be extra singleton axes, so squeeze those out.
+            # TODO: better way to do this? I think this might cause issues for
+            #       high-D data with one bank.
+            output = output.squeeze()
 
         return output
 
