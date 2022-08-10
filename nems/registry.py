@@ -96,7 +96,7 @@ class KeywordRegistry:
     def __getitem__(self, kw_string):
         kw = self.lookup(kw_string)
         obj = kw.parse(kw_string)
-        if (self.set_obj_name) and (obj.name is None):
+        if (self.set_obj_name) and (obj._name is None):
             kw_head = kw_string.split('.')[0]
             obj._name = kw_head
         return obj
