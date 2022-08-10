@@ -92,8 +92,7 @@ class Model:
     #       offloaded there.
     def evaluate(self, input, state=None, input_name=None, state_name=None,
                  output_name=None, n=None, time_axis=0, channel_axis=1,
-                 undo_reorder=True, return_full_data=True,
-                 save_layer_outputs=False, save_data_map=False,
+                 undo_reorder=True, return_full_data=True, save_data_map=False,
                  use_cached_map=False, batch_size=None):
         """Transform input(s) by invoking `Layer.evaluate` for each Layer.
 
@@ -146,24 +145,13 @@ class Model:
         return_full_data : bool; default=True
             If True, return a dictionary containing all input data and all
             uniquely-keyed Layer outputs.
-        save_layer_outputs : bool; default=False.
-            If True, force `return_full_data=True`. Additionally, each output
-            will also be saved in data['_layer_outputs'] with the form:
-                {'_layer_outputs': {
-                    f'{Layer.name}.{data_key}: eval_out}
-                }}
-            Such that the intermediate outputs of each `Layer.evaluate` are
-            guaranteed to be present in the output data, even if they would
-            normally be overwritten. This is useful for debugging and plotting,
-            but uses more memory.
         save_data_map : bool; default=False.
             If True, data['_data_map'] will contain the evaluated `input_map`
             returned by `Model.evaluate_input_map`. This nested dictionary
             contains one key per Layer with the form:
             `{layer.name: {'args': [...], 'kwargs': {...}, 'out': [...]}`
             where entries in the nested containers correspond to keys in `data`.
-            Similar to `save_layer_outputs`, this option can be helpful for
-            debugging (but uses much less additional memory).
+            This option can be helpful for debugging.
         use_cached_map : bool; default=False.
             If True, existing DataMaps will be used rather than generating a
             new one for each Layer. This is disabled by default for direct
@@ -215,19 +203,10 @@ class Model:
             time_axis=time_axis, channel_axis=channel_axis
         )
 
-        if save_layer_outputs:
-            if not return_full_data:
-                # TODO: log warning that return_full_data is going to be
-                #       overwritten since these options are incompatible.
-                pass
-            return_full_data = True
-            data['_layer_outputs'] = {}
-
         for layer in self.layers[:n]:
             _, _, last_output = self._evaluate_layer(
                 layer, data, input_name, state_name,
                 save_data_map=save_data_map, use_cached_map=use_cached_map,
-                save_layer_outputs=save_layer_outputs, 
                 )
         
         self._finalize_data(
@@ -277,30 +256,33 @@ class Model:
         return data, input_name, state_name
 
     def _evaluate_layer(self, layer, data, input_name, state_name,
-                        save_data_map=False, save_layer_outputs=False,
-                        use_cached_map=False):
+                        save_data_map=False, use_cached_map=False):
         """TODO: docs"""
         data_map, args, kwargs = layer.get_inputs(
             data, input_name, state_name, use_cached_map=use_cached_map
             )
         output = layer.evaluate(*args, **kwargs)
         data_map.map_outputs(output)
-        data['last_output'] = output
-
         if save_data_map:
             if '_data_map' not in data:
                 data['_data_map'] = {}
             data['_data_map'][layer.name] = data_map
 
-        for k, v in zip(data_map.out, output):
-            # Add singleton channel axis if needed.
-            if v.ndim == 1:
-                v = v[..., np.newaxis]
-            if k is not None:
-                data[k] = v
-            if save_layer_outputs:
-                # Save all intermediate outputs with unique keys
-                data['_layer_outputs'][f'{layer.name}.{k}'] = v
+        if not isinstance(output, list):
+            # Temporarily wrap in a list to simplify other code
+            single_output = True
+            output = [output]
+        else:
+            single_output = False
+        # Add singleton channel axis to each array if missing.
+        output = [x[..., np.newaxis] if x.ndim == 1 else x for x in output]
+        data.update({k: v for k, v in zip(data_map.out, output)
+                      if k is not None})
+
+        if single_output:
+            # Unwrap temporary list
+            output = output[0]
+        data['last_output'] = output
 
         return args, kwargs, output
 
@@ -1046,7 +1028,7 @@ class DataSet(dict):
         #       save them all as attrs
         self.initialize_data(input, state, target)  # other kwargs too
 
-    def initialize_data(self, input):  # other kwargs too
+    def initialize_data(self, input, state, target):  # other kwargs too
         # TODO: do stuff from Model._initialize_data to generate data
         # TODO: 3 options for parsing default names:
         #       1) do it in the model before creating DataSet, make input and
@@ -1057,7 +1039,7 @@ class DataSet(dict):
         #       3) do it here with extra kwargs for defaults.
         #       4) do it here and move defaults to be DataSet class attrs
         #          (less convenient for users)
-        data = {'testing': [1,2,3]}
+        data = input
         super().__init__(**data)  # enables __getitem__, __setitem__, etc.
 
     def finalize_data(self):

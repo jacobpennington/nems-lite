@@ -193,24 +193,10 @@ def plot_model(model, input, target=None, n=None, select_layers=None,
         # Only one subfigure
         subfigs = np.array([subfigs])
 
-    # Evaluate the model with `save_layer_outputs=True` to make sure all
-    # intermediate Layer outputs are stored.
-    data = model.evaluate(input, save_layer_outputs=True, **eval_kwargs)
-    layer_outputs = data['_layer_outputs']
-
-    # Re-order layer outputs so that each index of `outputs` is a list
-    # containing all of the outputs from one layer, while keeping the output
-    # lists in Layer-order.
-    outputs = []
-    for i, layer in enumerate(layers):
-        outputs.append([])
-        for k, v in layer_outputs.items():
-            if k.startswith(layer.name):
-                outputs[i].append(v)
-
-    # Generate the plot for each layer
-    iter_zip = zip(outputs, layers, subfigs.flatten())
-    for i, (output, layer, subfig) in enumerate(iter_zip):
+    layer_info = model.generate_layer_data(input, **eval_kwargs)
+    iterator = enumerate(zip(layers, subfigs, layer_info))
+    for i, (layer, subfig, (info, _)) in iterator:
+        output = info['out']
         layer.plot(output, fig=subfig, **layer.plot_kwargs)
         if show_titles:
             # Make room for titles
