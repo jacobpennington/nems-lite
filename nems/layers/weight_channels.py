@@ -2,7 +2,7 @@ import numpy as np
 
 from nems.registry import layer
 from nems.distributions import Normal, HalfNormal
-from .base import Layer, Phi, Parameter
+from .base import Layer, Phi, Parameter, ShapeError
 
 
 # TODO: double check all shape references after dealing w/ data order etc,
@@ -106,7 +106,17 @@ class WeightChannels(Layer):
         #     c = np.moveaxis(self.coefficients.values, [0, 1], [-2, -1])
         # else:
         #     c = self.coefficients
-        return input @ self.coefficients
+        
+        try:
+            output = input @ self.coefficients
+        except ValueError as e:
+            # Check for dimension swap, to give more informative error message.
+            if 'mismatch in its core dimension' in str(e):
+                raise ShapeError(self, input=input.shape,
+                                 coefficients=self.coefficients.shape)
+            else:
+                # Otherwise let the original error through.
+                raise e
 
     def as_tensorflow_layer(self):
         """TODO: docs"""
