@@ -75,7 +75,7 @@ class WeightChannels(Layer):
         """
         return self.parameters['coefficients']
 
-    def evaluate(self, *inputs):
+    def evaluate(self, input):
         """Multiply input(s) by WeightChannels.coefficients.
 
         Computes $y = XA$ for each input $X$,
@@ -106,8 +106,7 @@ class WeightChannels(Layer):
         #     c = np.moveaxis(self.coefficients.values, [0, 1], [-2, -1])
         # else:
         #     c = self.coefficients
-
-        return [x @ self.coefficients for x in inputs]
+        return input @ self.coefficients
 
     def as_tensorflow_layer(self):
         """TODO: docs"""

@@ -1,6 +1,7 @@
 from nems.registry import layer
 from nems.visualization import plot_layer
 from .phi import Phi
+from .map import DataMap
 
 
 # TODO: add more examples, and tests
@@ -145,7 +146,9 @@ class Layer:
         self.shape = shape
         # In the event of a name clash in a Model, an integer will be appended
         # to `Layer.name` to ensure that all Layer names are unique.
-        self.name = name
+        # TODO: make name property instead and save _name, default_name here.
+        #       (so that other code doesn't need to check for None name)
+        self.name = name 
         self.model = None  # pointer to parent ModelSpec
 
         if parameters is None:
@@ -158,6 +161,8 @@ class Layer:
             self.set_priors(**priors)
         if bounds is not None:
             self.set_bounds(**bounds)
+
+        self._map = None
 
         # TODO: rename this to state_kwarg to avoid confusion with state_name
         #       in Model.evaluate. Have to change in a few other places as well.
@@ -290,30 +295,26 @@ class Layer:
         """
         return Phi()
 
-    # TODO:
-    def _evaluate(self, data, use_cached_map=False):
-        args, kwargs = self._get_input(data)
-        output = self.evaluate(*args, **kwargs)
-        data_map = self._map_output(self, output)
-        return output, data_map
+    def get_inputs(self, data, input_name, state_name, use_cached_map=False):
+        """TODO: docs. note this is dependent on state of data, best used
+        through model.evaluate or model.generate_layer_inputs
 
-    def _get_input(self, data):
-        if self.input is None:
-            input = data['last_output']
+        """
+        if use_cached_map and (self._map is not None):
+            data_map = self._map
         else:
-            # TODO: port code from model.evaluate
-            #       (equiv of layer_data_from_map)
-            pass
+            data_map = self._map = DataMap(self, state_name)
+        args, kwargs = data_map.get_inputs(data, input_name)
 
-    def _map_output(self, output):
-        # TODO: port code from model.evaluate
-        #       (equiv of evaluate_input_map)
-        pass
+        return data_map, args, kwargs
 
-    def get_input_map(self):
-        # TODO: port code from model.evaluate
-        pass
-
+    def get_input_map(self, state_name=None):
+        """TODO: docs"""
+        if self._map is not None:
+            data_map = self._map
+        else:
+            data_map = DataMap(self, state_name)
+        return data_map
 
     def evaluate(self, *args, **kwargs):  
         """Applies some mathematical operation to the argument(s).

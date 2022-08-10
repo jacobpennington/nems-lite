@@ -51,7 +51,7 @@ class StateGain(Layer):
         
         return Phi(gain, offset)
 
-    def evaluate(self, *inputs, state):
+    def evaluate(self, input, state):
         """Multiply and shift input(s) by weighted sums of state channels.
         
         Parameters
@@ -64,9 +64,6 @@ class StateGain(Layer):
             be concatenated along axis 1 in the order they are provided.
 
         """
-        # TODO: probably a more pythonic way to set this requirement.
-        if inputs == ():
-            raise ValueError(f"StateGain(name={self.name}) received no inputs.")
 
         # TODO: take this out? sounds like it woudln't be super useful.
         if isinstance(state, list):
@@ -74,13 +71,7 @@ class StateGain(Layer):
             state = np.concatenate(state, axis=1)
 
         gain, offset = self.get_parameter_values()
-        output = [
-            # Output should be same shape as x, * is element-wise mult.
-            np.matmul(state, gain) * x + np.matmul(state, offset)
-            for x in inputs
-        ]
-
-        return output
+        return np.matmul(state, gain) * input + np.matmul(state, offset)
 
     @layer('stategain')
     def from_keyword(keyword):

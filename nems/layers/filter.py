@@ -87,8 +87,8 @@ class FiniteImpulseResponse(Layer):
         # which is not supported through ufunc.
         return self.parameters['coefficients'].values
 
-    def evaluate(self, *inputs):
-        """Convolve `FIR.coefficients` with input(s).
+    def evaluate(self, input):
+        """Convolve `FIR.coefficients` with input.
         
         TODO: need to do more testing for dim > 2 case, but this at least
               doesn't break dim = 2 (i.e. still matches old code output) and
@@ -123,24 +123,23 @@ class FiniteImpulseResponse(Layer):
         padding = np.zeros(shape=((filter_length-1, n_channels) + other_dims))
 
         output = []
-        for x in inputs:
-            filter_outputs = []
-            for j in range(n_filters):
-                c = coefficients[..., j]
-                input_with_padding = np.concatenate([padding, x])
-                z = scipy.signal.convolve(input_with_padding, c, mode='valid')
-                filter_outputs.append(z)
-            # Output of each convolution should be (T,1), concatenate to (T,N).
-            out = np.concatenate(filter_outputs, axis=1)
-            # For data with dimension > 2, there will also be extra singleton
-            # axes, so squeeze those out.
-            if len(other_dims) > 0:
-                out = out.squeeze()
-            output.append(out)
+        filter_outputs = []
+        for j in range(n_filters):
+            c = coefficients[..., j]
+            input_with_padding = np.concatenate([padding, input])
+            z = scipy.signal.convolve(input_with_padding, c, mode='valid')
+            filter_outputs.append(z)
+        # Output of each convolution should be (T,1), concatenate to (T,N).
+        out = np.concatenate(filter_outputs, axis=1)
+        # For data with dimension > 2, there will also be extra singleton
+        # axes, so squeeze those out.
+        if len(other_dims) > 0:
+            out = out.squeeze()
+        output.append(out)
 
         return output
 
-    def old_evaluate(self, *inputs):
+    def old_evaluate(self, input):
         """Temporary copy of old nems implementation, for testing.
         
         TODO: DELETE ME when no longer needed for testing (along with the
@@ -159,12 +158,8 @@ class FiniteImpulseResponse(Layer):
         else:
             banks = 1
 
-        output = [
-            per_channel(x.T, c, non_causal=False, rate=1, bank_count=banks).T
-            for x in inputs
-        ]
-
-        return output
+        return per_channel(input.T, c, non_causal=False,
+                           rate=1, bank_count=banks).T
     
     @layer('fir')
     def from_keyword(keyword):
