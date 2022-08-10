@@ -168,15 +168,8 @@ class DoubleExponential(StaticNonlinearity):
         
         """
         base, amplitude, shift, kappa = self.get_parameter_values()
-        output = []
-        y = base + amplitude * np.exp(-np.exp(  # double exponential
-                np.array(-np.exp(kappa)) * (input - shift)  # exp(kappa) > 0
-                ))
-        # TODO: fix dim alignment so that the previous transformation
-        #       doesn't add an extra axis (presumably something to do with
-        #       array broadcasting).
-        z = np.squeeze(y, axis=0)
-        output.append(z)
+        inner_exp = (-np.exp(kappa) * (input - shift))
+        output = base + amplitude * np.exp(-np.exp(inner_exp))
         return output
 
     @layer('dexp')
