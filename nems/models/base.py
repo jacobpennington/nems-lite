@@ -350,12 +350,20 @@ class Model:
             for k, v in d.items():
                 if isinstance(v, list):
                     print(f'{k}:')
-                    for i, val in enumerate(v):
+                    i = 0
+                    for val in v:
                         print(wrap(i, val))
+                        i += 1
+                    if i == 0:
+                        print('-'*16)
                 elif isinstance(v, dict):
                     print(f'{k}:')
+                    j = 0
                     for key, value in v.items():
                         print(wrap(key, value))
+                        j += 1
+                    if j == 0:
+                        print('-'*16)
                 else:
                     print(wrap(k, v))
             print('\u203E'*79)

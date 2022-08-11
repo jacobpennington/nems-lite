@@ -153,7 +153,7 @@ class DataMap:
         if name is None:
             name = self.layer.default_name
             
-        s = f"DataMap(layer={name}, state_name={self.state_name})\n"
+        s = f"DataMap(layer={name})\n"
         s += f".args: {self.args}\n"
         s += f".kwargs: {self.kwargs}\n"
         s += f".out: {self.out}\n"
