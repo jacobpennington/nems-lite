@@ -1,5 +1,6 @@
 import copy
 import textwrap
+import itertools
 
 import numpy as np
 import scipy.optimize
@@ -190,8 +191,8 @@ class Model:
         current_args = locals()
         current_args.pop('self')
         data_generator = self.generate_layer_data(**current_args)
-        for layer_data, data in data_generator[:n]:
-            continue
+        if n is not None: n -= 1
+        layer_data, data = self.get_layer_data(data_generator, n, n)[0]
 
         if not return_full_data:
             data = layer_data['out']  # output of final Layer.evaluate
@@ -202,17 +203,8 @@ class Model:
                          **eval_kwargs):
         """TODO: docs"""
 
-        reserved_keys = ['_last_output', '_state_name']
-        for rk in reserved_keys:
-            if rk in input:
-                # TODO: raise warning that this is a reserved key, data will
-                #       be overwritten in evaluate loop
-                pass
-
-        if input_name is None:
-            input_name = self.default_input
-        if state_name is None:
-            state_name = self.default_state
+        if input_name is None: input_name = self.default_input
+        if state_name is None: state_name = self.default_state
 
         # Initialize `data` dictionary.
         if isinstance(input, (np.ndarray, list)):
@@ -224,6 +216,13 @@ class Model:
             # dictionary will end up with additional keys after evaluation.
             data = input.copy()
         
+        reserved_keys = ['_last_output', '_state_name']
+        for rk in reserved_keys:
+            if rk in data:
+                # TODO: raise warning that this is a reserved key, data will
+                #       be overwritten in evaluate loop
+                pass
+
         # First "last output" is the input. Will not be used if Layer.input is
         # specified in first layer.
         data['_last_output'] = data.get(input_name, None)
@@ -324,6 +323,12 @@ class Model:
             layer_data['data'] = copy.deepcopy(data)
         yield layer_data, data
 
+    def get_layer_data(self, data_generator, first_index=None, last_index=None):
+        """Return data for layers between specified indices (inclusive)."""
+        if last_index is not None: last_index += 1
+        subset = itertools.islice(data_generator, first_index, last_index)
+        return [d for d in subset]
+
     def print_layer_data(self, input, max_char=79, show_full_data=False,
                          max_array_length=20, **eval_kwargs):
         """TODO: docs. Loops through all layers with generate_layer_data,
@@ -372,7 +377,7 @@ class Model:
 
     def fit(self, input, target=None, target_name=None, backend=None,
             cost_function='mse', fitter_options=None, log_spacing=5,
-            sanitize_data=False, **eval_kwargs):
+            undo_reorder=False, use_existing_maps=True, **eval_kwargs):
         """Optimize model parameters to match `Model.predict(input)` to target.
         
         TODO: where do jackknife indices fit in? possibly use segmentor idea
@@ -421,53 +426,46 @@ class Model:
             Log progress of fitter every `log_spacing` iterations.
             Note: this is the number of iterations, not the number of cost
             function evaluations (of which there may be many per iteration).
-        sanitize_data : bool; default=False.
-            If True, pass input through `Model.evaluate(undo_reorder=False)`
-            one time prior to fitting, so that `np.moveaxis` and `newaxis`
-            operations are not repeated on every evaluation while fitting.
-
+        undo_reorder : bool; default=False.
+            If True, and data axes were re-ordered, revert to the original
+            ordering after evaluating. Set False to return the re-ordered data.
+            This is disabled by default during fitting to reduce overhead.
+        use_existing_maps : bool; default=True.
+            If True, existing DataMaps will be used rather than generating a
+            new one for each Layer. This is disabled by default for direct
+            evaluation, but enabled by default when called from `Model.fit` to
+            eliminate unnecessary overhead for repeated evaluations of the same
+            data.
+        eval_kwargs : dict
+            Other keyword arguments will be supplied to `Model.evaluate`.
 
         """
-        if target is None:
-            # Must specify either target or target_name
-            target = input[target_name]
-        if fitter_options is None:
-            # TODO: maybe set Model.default_fitter_options for this instead?
-            #       
-            fitter_options = {}
-        if backend is None:
-            backend = self.default_backend
+
+        # Must specify either target or target_name
+        if target is None: target = input[target_name]
+        # TODO: maybe set Model.default_fitter_options for this instead?
+        if fitter_options is None: fitter_options = {}
+        if backend is None: backend = self.default_backend
         if isinstance(cost_function, str):
             # Convert string reference to metric function
             cost_function = get_metric(cost_function)
 
-        if sanitize_data:
-            # Evaluate once to set data-ordering and dimension padding, so that
-            # those operations are not repeated for each evaluation.
-            # TODO: this is very kludgy and not comparmentalized well... work on a
-            #       better option, or maybe just skip this altogether and inform
-            #       users that they should either re-order prior to fitting or
-            #       accept the minor performance hit.
-            # TODO: After some rough testing, this doesn't seem to be worth it.
-            #       About a 5% increase (or less) for fit duration on 3-dim
-            #       random data. Leaving it here for now to do some more testing
-            #       when larger models are implemented, but can likely be axed.
-            data = self.evaluate(input, undo_reorder=False, **eval_kwargs)
-            if isinstance(input, np.ndarray):
-                key = eval_kwargs.get('input_name', self.default_input)
-                input = data[key]
-            else:
-                input = data
-            eval_kwargs['time_axis'] = 0
-            eval_kwargs['channel_axis'] = 1
-
-        # DataMaps won't change since the data is the same, so no reason to
-        # re-generate them.
-        eval_kwargs['use_existing_maps'] = True
+        # Set data-ordering prior to fitting so that those operations are
+        # not repeated for each evaluation.
+        data = self._initialize_data(
+            input, undo_reorder=undo_reorder, 
+            use_existing_maps=use_existing_maps,
+            **eval_kwargs
+            )
+        if not undo_reorder:
+            # Reset these to default values, otherwise arrays will
+            # be improperly reordered if these kwargs had non-default values.
+            _ = eval_kwargs.pop('time_axis', None)
+            _ = eval_kwargs.pop('channel_axis', None)
 
 
-        # TODO: prediction is always a list, target currently isn't being
-        #       treated as one. Need to do some extra checks to align those
+        # TODO: prediction & target currently assumed to be arrays, but they can
+        #       also be lists. Need to do some extra checks to align those
         #       correctly for the cost function. Only working so far by accident,
         #       will break if more than one array in prediction list.
         #
@@ -505,6 +503,11 @@ class Model:
                 _scipy_cost_wrapper, initial_parameters, cost_args,
                 bounds=bounds,
                 method='L-BFGS-B', callback=_scipy_callback, **fitter_options
+            )
+            print(
+                f"Fit successful: {fit_result.success}\n"
+                f"Status: {fit_result.status}\n"
+                f"Message: {fit_result.message}"
             )
             improved_parameters = fit_result.x
             self.set_parameter_vector(improved_parameters)

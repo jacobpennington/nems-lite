@@ -94,10 +94,10 @@ def _nested_update(d, u):
     return d
 
 
-def plot_model(model, input, target=None, n=None, select_layers=None,
-               n_columns=1, show_titles=True, figure_kwargs=None,
-               sampling_rate=None, time_axis='x', conversion_factor=1,
-               decimals=2,  **eval_kwargs):
+def plot_model(model, input, target=None, target_name=None, n=None,
+               select_layers=None, n_columns=1, show_titles=True,
+               figure_kwargs=None, sampling_rate=None, time_axis='x',
+               conversion_factor=1, decimals=2,  **eval_kwargs):
     """Plot result of `Layer.evaluate` for each Layer in a Model.
     
     Aliased as `Model.plot_output()`.
@@ -226,11 +226,15 @@ def plot_model(model, input, target=None, n=None, select_layers=None,
 
     # Add plot of target if given, on last axis of last subfig.
     last_ax = subfig.axes[-1]
+    if target_name is not None:
+        target = input[target_name]
+    else:
+        target_name = 'Target'
     if target is not None:
         if not isinstance(target, list):
             target = [target]
         for i, y in enumerate(target):
-            last_ax.plot(y, label=f'Target {i}')
+            last_ax.plot(y, label=f'{target_name} {i}')
         last_ax.legend(**_DEFAULT_PLOT_OPTIONS['legend_kwargs'])
         last_ax.autoscale()
 
