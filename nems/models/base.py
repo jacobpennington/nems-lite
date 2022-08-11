@@ -81,21 +81,36 @@ class Model:
         """TODO: add layer at specific integer index."""
         raise NotImplementedError
 
-    # TODO: maybe move the details of the evaluate implementation somewhere
-    #       else, like the bottom of the class? They (the next 6 methods)
-    #       take up a lot of space and make it harder to scroll through to check
-    #       implementations of simple interfacing methods.
-    #
-    #       Alternatively, when implementing `_evaluate_hook` (or whatever it
-    #       gets named) for `Layer`, maybe some of these details could be
-    #       offloaded there.
     def evaluate(self, input, state=None, input_name=None, state_name=None,
                  output_name=None, n=None, time_axis=0, channel_axis=1,
                  undo_reorder=True, return_full_data=True,
                  use_existing_maps=False, batch_size=None):
         """Transform input(s) by invoking `Layer.evaluate` for each Layer.
 
-        TODO: add more context, examples
+        Evaluation encapsulates three steps:
+            1) Package data and metadata in a single container, possibly after
+               some reformatting depending on which options are specified.
+            2) Loop over `Model.layers`, invoking `Layer._evaluate` to
+               transform the data.
+            3) Clean up no-longer-needed data, and possibly undo re-formatting.
+        See `Model.generate_layer_data` (and subroutines) for implementation.
+
+        During the evaluation process, `input` (and `state` if provided) will
+        be packaged into a `data` dictionary, with the following structure:
+            array_name : ndarray. 
+                If `input` is a dict, each array in `input` will be
+                shallow-copied to `data` with the same key. Otherwise, arrays
+                `input` and `state` will be added to `data` with keys
+                `input_name` and `state_name` respectively (or the relevant
+                `Model.default_<name>` attribute).
+            _last_output : ndarray, list, or None
+                Return value of the most recently evaluated Layer. This key is
+                removed after evaluation is complete.
+            _state_name : str
+                Specifies key in `data` (either `state_name` or model default)
+                that should be included as an additional input for Layers that
+                have not specified `Layer.input` but have defined 
+                `Layer.state_arg`. This key is removed after evaluation.
 
         Parameters
         ----------
@@ -161,7 +176,13 @@ class Model:
 
         See also
         --------
-        nems.layers.base.Layer.evaluate
+        nems.layers.base.Layer._evaluate
+        Model.generate_layer_data
+
+        Warnings
+        --------
+        Since arrays in `data` share memory with `input`, modifying shared
+        arrays in-place is strongly discouraged.
         
         """
         if batch_size is not None:
@@ -195,13 +216,18 @@ class Model:
         layer_data, data = self.get_layer_data(data_generator, n, n)[0]
 
         if not return_full_data:
-            data = layer_data['out']  # output of final Layer.evaluate
+            data = layer_data['out']  # output of final Layer._evaluate
         return data
 
     def _initialize_data(self, input, state=None, input_name=None,
                          state_name=None, time_axis=0, channel_axis=1,
                          **eval_kwargs):
-        """TODO: docs"""
+        """Package `input` and `state` into a `data` dictionary.
+        
+        Internal for `Model.generate_layer_data`. See `Model.evaluate` for
+        parameter documentation.
+        
+        """
 
         if input_name is None: input_name = self.default_input
         if state_name is None: state_name = self.default_state
@@ -226,14 +252,9 @@ class Model:
         # First "last output" is the input. Will not be used if Layer.input is
         # specified in first layer.
         data['_last_output'] = data.get(input_name, None)
-        # Layers with a `state_arg` that don't specify any inputs will get
-        # the array at this key, if it exists, in addition to last_output.
-        data['_state_name'] = state_name
 
         # Rearrange and/or add axes if needed.
         for k, v in data.items():
-            if k == '_state_name':
-                continue
             if data[k].ndim == 1:
                 # TODO: raise warning that most Layers (and some optional code
                 #       in Model.evaluate) assume 2 dimensions. Don't actually
@@ -245,7 +266,12 @@ class Model:
                 # Move time_axis to axis=0, channel_axis to axis=1
                 data[k] = np.moveaxis(v, [time_axis, channel_axis], [0, 1])
 
+        # Layers with a `state_arg` that don't specify any inputs will get
+        # the array at this key, if it exists, in addition to last_output.
+        data['_state_name'] = state_name
+
         return data
+
 
     def _evaluate_layer(self, layer, data):
         """TODO: docs"""
@@ -262,12 +288,15 @@ class Model:
 
         return args, kwargs, output
 
+
     def _finalize_data(self, final_layer, data, output_name=None,
                        undo_reorder=True, time_axis=0, channel_axis=1,
                        **eval_kwargs):
         """TODO: docs"""
-        if output_name is None:
-            output_name = self.default_output
+
+        if output_name is None: output_name = self.default_output
+        # Remove metadata, no longer needed.
+        _ = data.pop('_state_name')
 
         # Re-name last output if keys not specified by Layer
         final_output = data.pop('_last_output')
@@ -282,6 +311,7 @@ class Model:
                 for k, v in data.items():
                     # Move axis=0 to time_axis, axis=1 to channel_axis.
                     data[k] = np.moveaxis(v, [0, 1], [time_axis, channel_axis])
+
 
     def generate_layer_data(self, input, copy_data=False,
                             use_existing_maps=False, **eval_kwargs):
@@ -1010,6 +1040,9 @@ class _LayerDict:
 #       but otherwise acts as a dict, no epochs/splitting/etc. Possibly
 #       to/from json but would just be a wrapper for saving the dict, goal is
 #       for the class to be stateless except for ._data.
+# NOTE: This would also make storing metadata less kludgy. For example,
+#       data['_state_name'] means you can't just iterate over data to do data
+#       processing, have to add a check for (if string, ignore)
 class DataSet(dict):
     def __init__(self, input, state=None, target=None, input_name=None,
                  state_name=None, output_name=None, target_name=None,

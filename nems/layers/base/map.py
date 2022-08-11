@@ -122,6 +122,7 @@ class DataMap:
                 # i.e. `layer.evaluate(array)`.
                 args.append(data[a])
 
+        update_state=None
         kwargs = {}
         for k, v in self.kwargs.items():
             if v is None:
@@ -140,7 +141,12 @@ class DataMap:
                 if v == '_state_name':
                     # Special check for inserting state array
                     v = data[v]  # replace _state_name with actual key
+                    update_state = {k: v}
                 kwargs[k] = data[v]
+        
+        # Replace _state_name
+        if update_state is not None:
+            self.kwargs.update(update_state)
 
         return args, kwargs
 
