@@ -1,3 +1,5 @@
+import numpy as np
+
 from nems.registry import layer
 from nems.visualization import plot_layer
 from .phi import Phi
@@ -8,9 +10,18 @@ from .map import DataMap
 # TODO: add option to propagate other Parameter options from Layer.__init__,
 #       like `default_bounds` and `initial_value`.
 class Layer:
-    """Encapsulates one data-transformation step of a NEMS Model.
+    """Encapsulates one data-transformation step in a  Model.
 
-    Base class for NEMS Layers.
+    Attributes
+    ----------
+    subclasses : dict
+        A dictionary of classes that inherit from Layer, used by `from_json`.
+    state_arg : str or None; optional.
+        If string, `state_arg` will be interpreted as the name of an
+        argument for `Layer.evaluate`. During Model evaluation, if
+        `Layer.input is None` and a `state` array is provided to
+        `Model.evaluate`, then `state` will be added to other inputs as a
+        keyword argument, i.e.: `layer.evaluate(*inputs, **state)`.
 
     """
 
@@ -20,6 +31,8 @@ class Layer:
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         cls.subclasses[cls.__name__] = cls
+
+    state_arg = None
 
     def __init__(self, input=None, output=None, parameters=None,
                  priors=None, bounds=None, name=None, shape=None):
@@ -69,15 +82,6 @@ class Layer:
             Many Layer subclasses use this keyword argument to specify the
             shape of their Parameters. See individual subclasses for expected
             format.
-
-        Attributes
-        ----------
-        state_arg : str or None; optional.
-            If string, `state_arg` will be interpreted as the name of an
-            argument for `Layer.evaluate`. During Model evaluation, if
-            `Layer.input is None` and a `state` array is provided to
-            `Model.evaluate`, then `state` will be added to other inputs as a
-            keyword argument, i.e.: `layer.evaluate(*inputs, **state)`.
 
         Warnings
         --------
@@ -163,8 +167,7 @@ class Layer:
         if bounds is not None:
             self.set_bounds(**bounds)
 
-        self._map = None
-        self.state_arg = None
+        self.data_map = DataMap(self)
 
     @property
     def name(self):
@@ -296,26 +299,25 @@ class Layer:
         """
         return Phi()
 
-    def get_inputs(self, data, input_name, state_name, use_cached_map=False):
+    def reset_map(self):
+        """TODO: docs."""
+        self.data_map = DataMap(self)
+
+    def _evaluate(self, data):
         """TODO: docs. note this is dependent on state of data, best used
         through model.evaluate or model.generate_layer_inputs
 
         """
-        if use_cached_map and (self._map is not None):
-            data_map = self._map
-        else:
-            data_map = self._map = DataMap(self, state_name)
-        args, kwargs = data_map.get_inputs(data, input_name)
+        args, kwargs = self.data_map.get_inputs(data)
+        output = self.evaluate(*args, **kwargs)
+        # Add singleton channel axis to each array if missing.
+        if isinstance(output, (list, tuple)):
+            output = [x[..., np.newaxis] if x.ndim == 1 else x for x in output]
+        elif output.ndim == 1:
+            output = output[..., np.newaxis]
 
-        return data_map, args, kwargs
-
-    def get_input_map(self, state_name=None):
-        """TODO: docs"""
-        if self._map is not None:
-            data_map = self._map
-        else:
-            data_map = DataMap(self, state_name)
-        return data_map
+        # args and kwargs are also returned for easier debugging
+        return args, kwargs, output
 
     def evaluate(self, *args, **kwargs):  
         """Applies some mathematical operation to the argument(s).

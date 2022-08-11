@@ -1,5 +1,5 @@
 class DataMap:
-    def __init__(self, layer, state_name=None):
+    def __init__(self, layer):
         self.layer = layer
         self.name = layer.name
         self.input = layer.input
@@ -8,7 +8,6 @@ class DataMap:
         self.output = layer.output
 
         # Special check for adding state kwarg when no input is specified
-        self.state_name = state_name
         self.state_arg = layer.state_arg
         self.add_state = False
         if (layer.input is None) and (layer.state_arg is not None):
@@ -33,12 +32,13 @@ class DataMap:
             else:
                 args.append(key)
         if self.add_state:
-            kwargs[self.state_arg] = self.state_name
+            # This will be substituted with the actual key when fetching arrays
+            kwargs[self.state_arg] = '_state_name'
 
         self.args = args
         self.kwargs = kwargs
 
-    def map_outputs(self, eval_out):
+    def map_outputs(self, eval_out, output_name=None):
         """Determine where/whether to save `eval_out` in `data`.
 
         Adds keys to `self.out`. Entries will be all None (`eval_out` is not
@@ -49,31 +49,35 @@ class DataMap:
         """
         if not isinstance(eval_out, (list, tuple)):
             eval_out = [eval_out]
+        output = self.output
+        if (output_name is not None) and (output is None):
+            # Intended for use by `Model.evaluate` on final layer.
+            output = output_name
 
-        if self.output is not None:
-            if isinstance(self.output, str):
+        if output is not None:
+            if isinstance(output, str):
                 output_keys = [
-                    f"{self.output}.{i}" if i != 0 else f"{self.output}"
+                    f"{self.output}.{i}" if i != 0 else f"{output}"
                     for i in range(len(eval_out))
                     ]
-            elif isinstance(self.output, list):
-                if len(self.output) != len(eval_out):
+            elif isinstance(output, list):
+                if len(output) != len(eval_out):
                     raise ValueError(
                         f"Layer {self.layer.name} specified "
-                        f"{len(self.output)} outputs, but .evaluate returned "
+                        f"{len(output)} outputs, but .evaluate returned "
                         f"{len(eval_out)} outputs."
                     )
-                output_keys = self.output
+                output_keys = output
             else:
                 raise TypeError(
                     f"Unrecognized type for {self.name}.output:"
-                    f"{type(self.output)}"
+                    f"{type(output)}"
                     )
         else:
             output_keys = [None]*len(eval_out)
         self.out = output_keys
 
-    def get_inputs(self, data, input_name):
+    def get_inputs(self, data):
         """Get arrays from `data` that correspond to inputs for `Layer.evaluate`.
         
         Parameters
@@ -97,7 +101,7 @@ class DataMap:
         and are associated with the correct arrays.
         
         """
-        last_out = data.get('last_output', None)  # only None for first Layer
+        last_out = data['_last_output']
         missing_input = ("Cannot determine Layer input in Model.evaluate, \n"
                          f"specify `last_out` or `{self.name}.input`.")
 
@@ -106,8 +110,6 @@ class DataMap:
             if a is None:
                 # Supply each of the previous outputs as a separate input,
                 # i.e. `layer.evaluate(*last_out)`.
-                if last_out is None:
-                    last_out = data.get(input_name, None)
                 if last_out is None:
                     raise ValueError(missing_input)
                 args.append(last_out)
@@ -126,8 +128,6 @@ class DataMap:
                 # Supply keyword `k` with a list of the previous outputs,
                 # i.e. `layer.evaluate(k=[out1, out2, ...])`.
                 if last_out is None:
-                    last_out = data.get(input_name, None)
-                if last_out is None:
                     raise ValueError(missing_input)
                 kwargs[k] = last_out
             elif isinstance(v, list):
@@ -137,6 +137,9 @@ class DataMap:
             else: # (v should be a string)
                 # Supply keyword `k` with a single array,
                 # i.e. `layer.evaluate(k=array1)`.
+                if v == '_state_name':
+                    # Special check for inserting state array
+                    v = data[v]  # replace _state_name with actual key
                 kwargs[k] = data[v]
 
         return args, kwargs

@@ -17,10 +17,8 @@ class StateGain(Layer):
     TODO
     
     """
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.state_arg = 'state'  # see Layer.__init__ docs for details
+    
+    state_arg = 'state'  # see Layer docs for details
 
     def initial_parameters(self):
         """Docs TODO

@@ -31,9 +31,8 @@ def build_model(nems_model, tf_layers, input, batch_size=None, eval_kwargs=None)
     # one batch.
     input = {k: v[0, ...] for k, v in input.items()}
     eval_kwargs = {} if eval_kwargs is None else eval_kwargs
-    data_map = nems_model.evaluate(
-        input, save_data_map=True, **eval_kwargs
-        )['_data_map']
+    _ = nems_model.evaluate(input, **eval_kwargs)
+    data_map = {layer.name: layer.data_map.keys for layer in nems_model.layers}
 
     last_output = None
     tf_data = tf_input_dict.copy()  # Need to keep actual Inputs separate
