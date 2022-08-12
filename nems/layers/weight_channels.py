@@ -125,6 +125,7 @@ class WeightChannels(Layer):
         from nems.tf import get_tf_class
 
         def call(self, inputs):
+            # TODO: docs, explain (at least briefly) why this is the same thing.
             return tf.nn.conv1d(
                 inputs, tf.expand_dims(self.coefficients, 0), stride=1,
                 padding='SAME'
@@ -263,3 +264,38 @@ class GaussianWeightChannels(WeightChannels):
         coefficients /= cumulative_sum
 
         return coefficients
+
+    def as_tensorflow_layer(self):
+        """TODO: docs"""
+        import tensorflow as tf
+        from nems.tf import get_tf_class
+
+        def call(self, inputs):
+            # TODO: docs. Explain (at least briefly) why this is the same thing.
+            input_features = tf.cast(tf.shape(inputs)[-1], dtype='float32')
+            temp = tf.range(input_features) / input_features
+            temp = (tf.reshape(temp, [1, input_features, 1]) - self.mean) / (self.sd/10)
+            temp = tf.math.exp(-0.5 * tf.math.square(temp))
+            kernel = temp / tf.math.reduce_sum(temp, axis=1)
+
+            return tf.nn.conv1d(inputs, kernel, stride=1, padding='SAME')
+        
+        def weights_to_values(self):
+            values = self.parameter_values
+            values['sd'] = values['sd']/10  # undo kludge mentioned below
+            return values
+
+        # TODO: Ask SVD about this kludge in old NEMS code. Is this still needed?
+        # If so, explain: I think this was to keep gradient from "blowing up"?
+        # Scale up sd bound
+        sd_lower, sd_upper = self.parameters['sd'].bounds
+        self.parameters['sd'].bounds = (sd_lower, sd_upper*10)
+        tf_class = get_tf_class(
+            self, call=call, weights_to_values=weights_to_values
+            )
+        # Reset sd bound
+        self.parameters['sd'].bounds = (sd_lower, sd_upper)
+        # TODO: this also means the parameter value for sd will need to be
+        #       scaled down when retrieving from tf
+
+        return tf_class
