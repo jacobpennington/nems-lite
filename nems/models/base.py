@@ -213,10 +213,12 @@ class Model:
         current_args.pop('self')
         data_generator = self.generate_layer_data(**current_args)
         if n is not None: n -= 1
-        layer_data, data = self.get_layer_data(data_generator, n, n)[0]
+        layer_data = self.get_layer_data(data_generator, n, n)[0]
 
         if not return_full_data:
             data = layer_data['out']  # output of final Layer._evaluate
+        else:
+            data = layer_data['data']
         return data
 
     def _initialize_data(self, input, state=None, input_name=None,
@@ -226,6 +228,10 @@ class Model:
         
         Internal for `Model.generate_layer_data`. See `Model.evaluate` for
         parameter documentation.
+
+        Returns
+        -------
+        data : dict
         
         """
 
@@ -241,17 +247,6 @@ class Model:
             # Arrays in shallow copy will share memory, but the new data
             # dictionary will end up with additional keys after evaluation.
             data = input.copy()
-        
-        reserved_keys = ['_last_output', '_state_name']
-        for rk in reserved_keys:
-            if rk in data:
-                # TODO: raise warning that this is a reserved key, data will
-                #       be overwritten in evaluate loop
-                pass
-
-        # First "last output" is the input. Will not be used if Layer.input is
-        # specified in first layer.
-        data['_last_output'] = data.get(input_name, None)
 
         # Rearrange and/or add axes if needed.
         for k, v in data.items():
@@ -266,24 +261,50 @@ class Model:
                 # Move time_axis to axis=0, channel_axis to axis=1
                 data[k] = np.moveaxis(v, [time_axis, channel_axis], [0, 1])
 
+        reserved_keys = ['_last_output', '_state_name']
+        for rk in reserved_keys:
+            if rk in data:
+                # TODO: raise warning that this is a reserved key, data will
+                #       be overwritten in evaluate loop
+                pass
+
+        # First Layer will use this key if Layer.input is None.
+        data['_input_name'] = input_name
         # Layers with a `state_arg` that don't specify any inputs will get
         # the array at this key, if it exists, in addition to last_output.
         data['_state_name'] = state_name
+        # No outputs yet
+        data['_last_output'] = None
 
         return data
 
 
     def _evaluate_layer(self, layer, data):
-        """TODO: docs"""
+        """Evaluates one Layer. Internal for `Model.generate_layer_data`.
+        
+        Returns
+        -------
+        args : list of ndarray
+            Positional arguments for `Layer.evaluate`.
+        kwargs : dict of ndarray
+            Keyword arguments for `Layer.evaluate`.
+        output : ndarray or list of ndarray
+            Return value of `Layer.evaluate(*args, **kwargs)`.
+        
+        """
+        
+        # Get input & output arrays
         args, kwargs, output = layer._evaluate(data)
-        layer.data_map.map_outputs(output)
 
+        # Save output (or don't) based on Layer.DataMap.
+        # data_keys is always a list, but output might be a list or one array.
         data_keys = layer.data_map.out
         if isinstance(output, (list, tuple)):
             data.update({k: v for k, v in zip(data_keys, output)
                         if k is not None})
         elif data_keys[0] is not None:
             data[data_keys[0]] = output
+        # Always save output to _last_output, for use by subsequent Layers.
         data['_last_output'] = output
 
         return args, kwargs, output
@@ -292,10 +313,20 @@ class Model:
     def _finalize_data(self, final_layer, data, output_name=None,
                        undo_reorder=True, time_axis=0, channel_axis=1,
                        **eval_kwargs):
-        """TODO: docs"""
+        """Remove metadata and undo re-formatting if needed.
+
+        Internal for `Model.generate_layer_data`. See `Model.evaluate` for
+        parameter documentation.
+
+        Returns
+        -------
+        None
+        
+        """
 
         if output_name is None: output_name = self.default_output
         # Remove metadata, no longer needed.
+        _ = data.pop('_input_name')
         _ = data.pop('_state_name')
 
         # Re-name last output if keys not specified by Layer
@@ -315,21 +346,72 @@ class Model:
 
     def generate_layer_data(self, input, copy_data=False,
                             use_existing_maps=False, **eval_kwargs):
-        """TODO: generator for layer args/kwargs one at a time.
+        """Generate input and output arrays for each Layer in Model.
         
-        Essentially the same thing as .evaluate but yields data after each
-        layer is evaluated.
-        (much less memory than saving them all during evaluation,
-        for plotting/debugging)
+        This method serves as the core loop for `Model.evaluate`, but is exposed
+        separately for use in plotting, debugging, etc. The loop is implemented
+        as a generator to reduce memory overhead when only one Layer at a time
+        is needed.
 
-        TODO: after testing, can actually just replace the body of .evaluate
-        with this, it's the same thing.
+        Parameters
+        ----------
+        input : dict or ndarray
+            See `Model.evaluate`.
+        copy_data : bool; default=False.
+            If True, a deep copy of data will be stored in `layer_data['data']`
+            after each `Layer._evaluate`. This will be very memory intensive
+            for large data, and is generally not recommended.
+        use_existing_maps : bool; default=False.
+            If True, existing DataMaps will be used rather than generating a
+            new one for each Layer. This is disabled by default for direct
+            evaluation, but enabled by default when called from `Model.fit` to
+            eliminate unnecessary overhead for repeated evaluations of the same
+            data.
+        eval_kwargs : dict
+            Additional keyword arguments for `Model._initialize_data` and
+            `Model._finalize_data`. See `Model.evaluate` for documentation.
 
-        NOTE: include a warning that the second yield value is a reference to
-        the current data object that gets updated in-place. need to be careful
-        if modifying this directly. use copy_data to get safe copies.
+        Yields
+        ------
+        layer_data : dict
+            `layer_data` has the following structure: {
+                'index': int, index of Layer within Model.
+                'layer': str, Layer.name.
+                'args': list of ndarray, positional arguments
+                    for `Layer._evaluate`.
+                'kwargs': dict of ndarray, keyword arguments
+                    for `Layer._evaluate`
+                'out': ndarray or list of ndarray, return value of
+                    `Layer._evaluate(*args, **kwargs)`.
+                'data' : dict
+                    See `Model.evaluate` for details.
+                }
+
+        Warnings
+        --------
+        layer_data['data'], is a reference to a data structure that is
+        iteratively updated in-place during evaluation. Modifying this
+        structure in-place is strongly discouraged, as it can violate the state
+        expectations of not-yet-evaluated Layers. To make modifications safely,
+        use `copy_data=True`.
+
+        See also
+        --------
+        Model.get_layer_data
+        Model.print_layer_data
+
+        Examples
+        --------
+        Get a list of all outputs in memory simultaneously:
+        >>> generator = generate_layer_data(input, **eval_kwargs)
+        >>> data_list = [d['out'] for d, _ in generator]
+
+        Get positional arguments for the first layer:
+        >>> generator = generate_layer_data(input, **eval_kwargs)
+        >>> args = next(generator)['args']
 
         """
+
         data = self._initialize_data(input, **eval_kwargs)
 
         max_n = len(self.layers)
@@ -345,27 +427,74 @@ class Model:
             if n < (max_n - 1):
                 if copy_data:
                     layer_data['data'] = copy.deepcopy(data)
-                yield layer_data, data
+                else:
+                    layer_data['data'] = data
+                yield layer_data
 
-        # On final layer, may need to update data
+        # On final layer, only update data after evaluation
         self._finalize_data(layer, data, last_output=o, **eval_kwargs)
         if copy_data:
             layer_data['data'] = copy.deepcopy(data)
-        yield layer_data, data
+        else:
+            layer_data['data'] = data
 
+        yield layer_data
+
+
+    # TODO: maybe remove the data_generator arg and just have this wrap
+    #       generate_layer_data? 
     def get_layer_data(self, data_generator, first_index=None, last_index=None):
-        """Return data for layers between specified indices (inclusive)."""
+        """Return data for layers between specified indices (inclusive).
+        
+        Parameters
+        ----------
+        data_generator : generator
+            Return value of `Model.generate_layer_data`.
+        first_index : int; optional.
+            Index within Model of the first Layer to get data for.
+        last_index : int; optional.
+            Index within Model of the last Layer to get data for.
+
+        Returns
+        -------
+        list of (dict, dict)
+            See `Model.generate_layer_data`.
+
+        Examples
+        --------
+        Get a list of all inputs & outputs in memory simultaneously:
+        >>> generator = generate_layer_data(input, **eval_kwargs)
+        >>> data_list = get_layer_data(generator)
+
+        Get the keyword arguments for the 3rd Layer:
+        >>> generator = generate_layer_data(input, **eval_kwargs)
+        >>> kwargs3 = get_layer_data(generator, 3, 3)['kwargs']
+        
+        """
         if last_index is not None: last_index += 1
         subset = itertools.islice(data_generator, first_index, last_index)
         return [d for d in subset]
 
-    def print_layer_data(self, input, max_char=79, show_full_data=False,
-                         max_array_length=20, **eval_kwargs):
-        """TODO: docs. Loops through all layers with generate_layer_data,
-        pretty-prints the output (for debugging).
+    def print_layer_data(self, input, max_char=79, max_array_length=20,
+                         show_full_data=False, **eval_kwargs):
+        """Pretty-print the return value of `Model.generate_layer_data`.
 
-        NOTE: hard to read with real (i.e. large) data, so arrays are truncated
-        by default. Increase max_array_length to show more (but not recommended).
+        Parameters
+        ----------
+        input : ndarray or dict
+            See `Model.evaluate`.
+        max_char : int; default=79.
+            Maximum number of characters to display on each line.
+            TODO: separators currently ignore this.
+        max_array_length : int; default=20.
+            Show truncated arrays if they contain more than this many entries.
+            Equivalent to `np.set_printoptions(threshold=max_array_length)`,
+            but the previous threshold will be reset after printing.
+            TODO: add precision option?
+        show_full_data : bool; default=False.
+            If True print the entire `data` dictionary for each Layer.
+
+        TODO: option to return string instead of printing?
         
         """
         def wrap(k, v):
@@ -374,7 +503,9 @@ class Model:
         current_threshold = np.get_printoptions()['threshold']
         np.set_printoptions(threshold=max_array_length)
 
-        for d, _data in self.generate_layer_data(input, **eval_kwargs):
+        for d in self.generate_layer_data(input, **eval_kwargs):
+            _data = d.pop('data')
+
             # Input/output info
             print('_'*36 + f'in/out:' + '_'*36)
             for k, v in d.items():
@@ -1040,9 +1171,6 @@ class _LayerDict:
 #       but otherwise acts as a dict, no epochs/splitting/etc. Possibly
 #       to/from json but would just be a wrapper for saving the dict, goal is
 #       for the class to be stateless except for ._data.
-# NOTE: This would also make storing metadata less kludgy. For example,
-#       data['_state_name'] means you can't just iterate over data to do data
-#       processing, have to add a check for (if string, ignore)
 class DataSet(dict):
     def __init__(self, input, state=None, target=None, input_name=None,
                  state_name=None, output_name=None, target_name=None,

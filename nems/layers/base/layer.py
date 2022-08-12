@@ -300,7 +300,12 @@ class Layer:
         return Phi()
 
     def reset_map(self):
-        """TODO: docs."""
+        """Overwrite `Layer.data_map` with a fresh copy.
+        
+        This will remove information about outputs and any data-dependent
+        information (like first input).
+        
+        """
         self.data_map = DataMap(self)
 
     def _evaluate(self, data):
@@ -310,11 +315,15 @@ class Layer:
         """
         args, kwargs = self.data_map.get_inputs(data)
         output = self.evaluate(*args, **kwargs)
+
         # Add singleton channel axis to each array if missing.
         if isinstance(output, (list, tuple)):
             output = [x[..., np.newaxis] if x.ndim == 1 else x for x in output]
         elif output.ndim == 1:
             output = output[..., np.newaxis]
+        
+        # Add output information to DataMap
+        self.data_map.map_outputs(output)
 
         # args and kwargs are also returned for easier debugging
         return args, kwargs, output

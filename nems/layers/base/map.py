@@ -102,6 +102,9 @@ class DataMap:
         
         """
         last_out = data['_last_output']
+        if (last_out is None) and (self.layer.input is None):
+            # First statement should only be True for first Layer
+            self.args = [data['_input_name']]
         missing_input = ("Cannot determine Layer input in Model.evaluate, \n"
                          f"specify `last_out` or `{self.name}.input`.")
 
