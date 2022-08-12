@@ -185,31 +185,68 @@ class Model:
         arrays in-place is strongly discouraged.
         
         """
+
+        # TODO: Should this be implemented outside evaluate instead?
+        #       fit will need to do this for target as well, and most of this
+        #       code is not related to evaluation, just reorganization of data.
+        #       (could go in the DataSet class if that ends up being used).
         if batch_size is not None:
             current_args = locals()
             current_args['batch_size'] = None
             current_args.pop('self')  # otherwise self will be passed twice
-            # TODO: split data into batches along first axis, assumes
-            #       user has already separated data by trial or something else
-            #       and has shape (S, T, N) instead of (T,N) where S represents
-            #       number of samples/trials/whatever. I.e. should end up with
-            #       a list of arrays with shape (B, T, N), where B is
-            #       `batch_size` (i.e. number of samples per batch).
-            # NOTE: per SVD request, also support passing in list directly
+
+            # TODO: per SVD request, also support passing in list directly
             #       (e.g. if data is already a list, assume it has been split
             #        and that each array in the list is one batch).
-            batches = []
-            for batch in batches:
+
+            # TODO: Have to initialize data prior to making batches, otherwise
+            #       could still be an array. Add option to skip adding metadata
+            #       (otherwise have to pop it out here).
+
+            # Split data into batches along first axis. Assumes user has already
+            # separated data by trial or something else to get shape (S, T, N)
+            # instead of (T,N), where S represents number of samples/trials/etc.
+            # I.e. should end up with a list of arrays with shape (B, T, N), where B is
+            #       `batch_size` (i.e. number of samples per batch).
+            # NOTE: This implementation results in a list of views into the
+            #       original data (i.e. memory is shared). If changes are made,
+            #       make sure the new version doesn't result in copies (which
+            #       could increase memory usage dramatically).
+            # NOTE: The last batch will be smaller than the others if the number
+            #       of samples doesn't divide evenly. Need to set up cost to
+            #       account for that (i.e. can't average across batches on arrays,
+            #       but could average across batches on already-computed costs).
+            batched_data = {
+                k: np.split(v, np.arange(batch_size, len(v), batch_size))
+                for k, v in data.items()
+                }
+            # TODO: Concatenate samples in time. How to do this without copying?
+            #
+            #       Alternatively, *dont* concatenate since samples may be
+            #       shuffled (and some Layers implicitly assume contiguous time).
+            #       In that case, need to somehow indicate to Layers to treat
+            #       the first dim as n_samples and update their shape accordingly
+            #       I guess we'd want them to just copy the existing parameters
+            #       S times, temporarily, though it's not clear how to use that
+            #       extra dimension. A for loop always works but that will be slow.
+            #       Maybe some version of np.apply could work?
+
+
+            batch_counts = [len(v) for _, v in batched_data.items()]
+            n_batches = batch_counts[0]
+            # Every array must have the same number of samples
+            # (and the same number of batches as a result).
+            assert np.all(np.array(batch_counts) == n_batches)
+
+            # Index into batched_data instead of collecting a list of batches,
+            # to ensure memory is still shared.
+            for i in range(batch_count):
+                batch = {k: v[i] for k, v in batched_data.items()}
+                # TODO: Not quite this simple. May need to change input_name,
+                #       state_name, etc. depending on how input was provided.
+                current_args['input'] = batch
                 batch_data = self.evaluate(**current_args)
-                # TODO: then what? I guess anything else would be handled
-                #       by the fitter.
-                # TODO: doing this loop here is a bit wasteful, since data_map
-                #       should be the same for every batch. If some of those
-                #       details were moved into Layers, that would help.
-                #       Ex: on first loop, Model gets Layer.input_map from
-                #       each Layer, evaluates them, combines them, stores that
-                #       as the map for every batch. Then eval just has to
-                #       pass in new data each time.
+
 
         current_args = locals()
         current_args.pop('self')
