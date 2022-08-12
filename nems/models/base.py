@@ -192,7 +192,9 @@ class Model:
             # TODO: split data into batches along first axis, assumes
             #       user has already separated data by trial or something else
             #       and has shape (S, T, N) instead of (T,N) where S represents
-            #       number of samples/trials/whatever.
+            #       number of samples/trials/whatever. I.e. should end up with
+            #       a list of arrays with shape (B, T, N), where B is
+            #       `batch_size` (i.e. number of samples per batch).
             # NOTE: per SVD request, also support passing in list directly
             #       (e.g. if data is already a list, assume it has been split
             #        and that each array in the list is one batch).
@@ -344,6 +346,9 @@ class Model:
                     data[k] = np.moveaxis(v, [0, 1], [time_axis, channel_axis])
 
 
+    # TODO: possibly move this method and any related subroutines to a separate
+    #       module (inside a new `base` directory), with simple wrappers in
+    #       Model as the public-facing API.
     def generate_layer_data(self, input, copy_data=False,
                             use_existing_maps=False, **eval_kwargs):
         """Generate input and output arrays for each Layer in Model.
@@ -544,6 +549,10 @@ class Model:
         return self.evaluate(input, return_full_data=return_full_data,
                              **eval_kwargs)
 
+
+    # TODO: Move the backend implementations and any related subroutines to a
+    #       separate module (inside a new `base` directory), with simple
+    #       wrappers in Model as the public-facing API.
     def fit(self, input, target=None, target_name=None, backend=None,
             cost_function='mse', fitter_options=None, log_spacing=5,
             undo_reorder=False, use_existing_maps=True, **eval_kwargs):

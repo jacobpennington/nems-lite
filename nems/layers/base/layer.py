@@ -309,8 +309,32 @@ class Layer:
         self.data_map = DataMap(self)
 
     def _evaluate(self, data):
-        """TODO: docs. note this is dependent on state of data, best used
-        through model.evaluate or model.generate_layer_inputs
+        """Get inputs from `data`, evaluate them, and update `Layer.data_map`.
+
+        Parameters
+        ----------
+        data : dict
+            See `Model.evaluate` for details on structure.
+
+        Returns
+        -------
+        args : list of ndarray
+            Positional arguments for `Layer.evaluate`.
+        kwargs : dict of ndarray
+            Keyword arguments for `Layer.evaluate`.
+        output : ndarray or list of ndarray
+            Return value of `Layer.evaluate(*args, **kwargs)`.
+        
+        Notes
+        -----
+        This method is dependent on the state of `data`, so is best thought of
+        as internal to `Model.evaluate` even though it technically does not
+        rely on the state of a particular Model.
+
+        See also
+        --------
+        nems.models.base.Model.evaluate
+        nems.layers.base.map.DataMap
 
         """
         args, kwargs = self.data_map.get_inputs(data)
