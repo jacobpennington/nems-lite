@@ -168,3 +168,17 @@ class DataMap:
         s += f".out: {self.out}\n"
         s += f"*"*16 + "\n"
         return s
+
+    def __iter__(self):
+        """Return an iter-wrapped singleton list containing this DataMap.
+
+        Supports compatibility for iterating over DataMaps returned by
+        `Model.get_data_maps` when single Layers are indexed, without the need
+        to repeatedly add `[0]` to the end of indexing statements.
+        
+        NOTE: This does *not* iterate over the DataMap itself.
+        TODO: This feels kludgy and I don't like it, but it allows for some
+              nice syntax for navigating Models.
+        
+        """
+        return iter([self])

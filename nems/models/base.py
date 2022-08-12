@@ -580,6 +580,22 @@ class Model:
 
         np.set_printoptions(threshold=current_threshold)
 
+    def get_data_maps(self):
+        """Get a dictionary of {Layer.name: Layer.DataMap} for all Layers.
+
+        Similar to `Model.layers`, this dictionary is wrapped so that indexing
+        with integers, slices, or multiple keys is also possible.
+        
+        Returns
+        -------
+        dict
+
+        See also
+        --------
+        nems.layers.base.map.DataMap
+        
+        """
+        return _LayerDict({layer.name: layer.data_map for layer in self.layers})
 
     def predict(self, input, return_full_data=False, **eval_kwargs):
         """As `Model.evaluate`, but return only the last output by default."""

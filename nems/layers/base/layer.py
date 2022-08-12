@@ -840,6 +840,9 @@ class Layer:
               iterate over parameters, refer iterators directly to
               `Layer.parameters`.
               E.x: `for p in Layer.parameters` instead of `for p in Layer`.
+
+        TODO: This feels kludgy and I don't like it, but it allows for some
+              nice syntax for navigating Models.
         
         """
         return iter([self])
