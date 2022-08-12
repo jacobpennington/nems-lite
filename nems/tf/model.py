@@ -32,19 +32,19 @@ def build_model(nems_model, tf_layers, input, batch_size=None, eval_kwargs=None)
     input = {k: v[0, ...] for k, v in input.items()}
     eval_kwargs = {} if eval_kwargs is None else eval_kwargs
     _ = nems_model.evaluate(input, **eval_kwargs)
-    data_map = {layer.name: layer.data_map.keys for layer in nems_model.layers}
+    data_maps = nems_model.get_data_maps()
 
     last_output = None
     tf_data = tf_input_dict.copy()  # Need to keep actual Inputs separate
     for layer in tf_layers:
         layer_inputs = []
-        layer_map = data_map[layer.name]
+        layer_map = data_maps[layer.name]
         # .call method in TF layers only accepts a single `inputs` argument,
         # can't directly specify inputs through keyword arguments and can't
         # use lists of inputs. Instead, we have to combine all inputs into a
         # single flattened list/tuple (which means Layer subclasses have to
         # account for that when defining .call).
-        all_data_keys = layer_map['args'] + list(layer_map['kwargs'].values())
+        all_data_keys = layer_map.args + list(layer_map.kwargs.values())
         all_data_keys = np.array(all_data_keys).flatten().tolist()
         for k in all_data_keys:
             if k is None:
@@ -53,9 +53,6 @@ def build_model(nems_model, tf_layers, input, batch_size=None, eval_kwargs=None)
             else:
                 # Add Input with matching key
                 layer_inputs.append(tf_data[k])
-        # TODO: does this mean all call methods need to expect a list, even
-        #       for just one key? (or add a hook here to unwrap singletons, if
-        #       TF doesn't do that automatically).
         last_output = layer(layer_inputs)
         
         # Return of call can be Tensor or list/tuple of tensor.
@@ -63,8 +60,8 @@ def build_model(nems_model, tf_layers, input, batch_size=None, eval_kwargs=None)
         if not isinstance(last_output, (list, tuple)):
             last_output = [last_output]
         tf_data.update(
-            {k: v for k, v in zip(layer_map['out'], last_output)
-                if k is not None}  # indicates unsaved intermediate output
+            {k: v for k, v in zip(layer_map.out, last_output)
+             if k is not None}  # indicates unsaved intermediate output
             )
 
     tf_inputs = list(tf_input_dict.values())
