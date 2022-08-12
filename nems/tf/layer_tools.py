@@ -3,23 +3,31 @@ from tensorflow.keras.layers import Layer
 from tensorflow.keras.constraints import Constraint
 
 
+class NemsKerasLayer(tf.keras.layers.Layer):
+
+    @property
+    def parameter_values(self):
+        """Returns key value pairs of the weight names and their values."""
+        # TF appendss :<int> to the weight names.
+        values = {weight.name.split(':')[0]: weight.numpy()
+                    for weight in self.weights} 
+        return values
+
+    def weights_to_values(self):
+        return self.parameter_values
+
+
 # TODO: handle frozen parameters
+# NOTE: doing this as a factory instead of putting everything in the above
+#       class so that a reference to the nems_layer isn't needed after creating
+#       the class (unlike providing it to the initializer). But may switch to
+#       that implementation in the future if this becomes impractical.
 def get_tf_class(nems_layer, **methods):
-    class Layer(tf.keras.layers.Layer):
+
+    class Layer(NemsKerasLayer):
         def __init__(self, regularizer=None, *args, **kwargs):
             super().__init__(name=nems_layer.name, *args, **kwargs)
             add_existing_weights(nems_layer, self, regularizer)
-
-        @property
-        def parameter_values(self):
-            """Returns key value pairs of the weight names and their values."""
-            # TF appendss :<int> to the weight names.
-            values = {weight.name.split(':')[0]: weight.numpy()
-                      for weight in self.weights} 
-            return values
-
-        def weights_to_values(self):
-            return self.parameter_values
 
     Layer.__name__ = f'{type(nems_layer).__name__}TF'
     for method_name, method_def in methods.items():
