@@ -6,19 +6,24 @@ from tensorflow.keras.constraints import Constraint
 # TODO: handle frozen parameters
 class NemsKerasLayer(Layer):
 
-    def __init__(self, nems_layer, new_values=None, regularizer=None,
-                 *args, **kwargs):
+    def __init__(self, nems_layer, new_values=None, new_bounds=None,
+                 regularizer=None, *args, **kwargs):
         """TODO: docs."""
         super().__init__(name=nems_layer.name, *args, **kwargs)
         if new_values is None: new_values = {}
+        if new_bounds is None: new_bounds = {}
         for p in nems_layer.parameters:
-            self._weight_from_nems(p, new_values.get(p.name, None), regularizer)
+            self._weight_from_nems(
+                p, new_values.get(p.name, None), new_bounds.get(p.name, None),
+                regularizer
+                )
 
-    def _weight_from_nems(self, p, value=None, regularizer=None):
+    def _weight_from_nems(self, p, value=None, bounds=None, regularizer=None):
         """Convert Parameter of NEMS Layer to a Keras Layer weight."""
         if value is None: value = p.values
+        if bounds is None: bounds = p.bounds
         init = tf.constant_initializer(value)
-        constraint = Bounds(p.bounds[0], p.bounds[1])
+        constraint = Bounds(bounds[0], bounds[1])
         trainable = not p.is_frozen
         setattr(
             self, p.name, self.add_weight(

@@ -232,7 +232,7 @@ class FiniteImpulseResponse(Layer):
                 return z
         else:
             # Use GPU-only version (grouped convolutions), much faster.
-            #@tf.function
+            @tf.function
             def call_fn(self, inputs):
                 # filter_width, rank, n_outputs are constants defined above.
                 input_width = tf.shape(inputs)[1]

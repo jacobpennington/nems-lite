@@ -143,13 +143,28 @@ class WeightChannels(Layer):
         import tensorflow as tf
         from nems.tf import NemsKerasLayer
 
+        c = self.coefficients
+        c_shape = c.shape
+        # Force at least 3 dimensions for compatibility with TF version of FIR.
+        if c.ndim < 3:
+            new_values = {'coefficients': c[...,np.newaxis]}
+        else:
+            new_values = {}
+
         class WeightChannelsTF(NemsKerasLayer):
             @tf.function
             def call(self, inputs):
+                # Add an n_outputs dimension to input if one is not present.
                 out = tf.tensordot(inputs, self.coefficients, axes=[[2], [0]])
                 return out
+
+            def weights_to_values(self):
+                values = self.parameter_values
+                # Remove extra dummy axis if one was added.
+                values['coefficients'] = values['coefficients'].reshape(c_shape)
+                return values
         
-        return WeightChannelsTF(self, **kwargs)
+        return WeightChannelsTF(self, new_values=new_values, **kwargs)
 
     @property
     def plot_kwargs(self):
@@ -246,7 +261,7 @@ class GaussianWeightChannels(WeightChannels):
         coefficients = np.exp(-0.5*((x-mean)/sd)**2)  # (rank, ..., outputs, T)
         reordered = np.moveaxis(coefficients, -1, 0)  # (T, rank, ..., outputs)
         # Normalize by the cumulative sum for each channel
-        cumulative_sum = np.sum(reordered, axis=1, keepdims=True)
+        cumulative_sum = np.sum(reordered, axis=-1, keepdims=True)
         # If all coefficients for a channel are 0, skip normalization
         cumulative_sum[cumulative_sum == 0] = 1
         normalized = reordered/cumulative_sum
@@ -261,32 +276,41 @@ class GaussianWeightChannels(WeightChannels):
         # TODO: Ask SVD about this kludge in old NEMS code. Is this still needed?
         # If so, explain: I think this was to keep gradient from "blowing up"?
         # Scale up sd bound
+        sd, mean = self.get_parameter_values('sd', 'mean')
+        sd_shape = sd.shape
+        if sd.ndim < 2:
+            # Always use at least 2 dims for compatibility with TF FIR.
+            sd = sd[..., np.newaxis]
+            mean = mean[..., np.newaxis]
         sd_lower, sd_upper = self.parameters['sd'].bounds
-        sd = self.get_parameter_values('sd')
-        self.parameters['sd'].bounds = (sd_lower, sd_upper*10)
-        self.set_parameter_values(sd=sd*10)
+        new_values = {'sd': sd*10, 'mean': mean}
+        new_bounds = {'sd': (sd_lower, sd_upper*10)}
 
         class GaussianWeightChannelsTF(NemsKerasLayer):
             def call(self, inputs):
                 # TODO: docs. Explain (at least briefly) why this is the same thing.
 
                 # TODO: convert to tensordot
-
+                mean = tf.expand_dims(self.mean, -1)
+                sd = tf.expand_dims(self.sd/10, -1)
                 input_features = tf.cast(tf.shape(inputs)[-1], dtype='float32')
                 temp = tf.range(input_features) / input_features
-                temp = (tf.reshape(temp, [1, input_features, 1]) - self.mean) / (self.sd/10)
+                temp = (tf.reshape(temp, [1, input_features, 1]) - mean) / sd
                 temp = tf.math.exp(-0.5 * tf.math.square(temp))
-                kernel = temp / tf.math.reduce_sum(temp, axis=1)
+                norm = tf.math.reduce_sum(temp, axis=1)
+                kernel = temp / norm
 
-                return tf.nn.conv1d(inputs, kernel, stride=1, padding='SAME')
+                return tf.tensordot(inputs, kernel, axes=[[2], [0]])
+                #return tf.nn.conv1d(inputs, kernel, stride=1, padding='SAME')
             
             def weights_to_values(self):
                 values = self.parameter_values
-                values['sd'] = values['sd']/10  # undo kludge mentioned below
+                # Remove extra dummy axis if one was added, and undo scaling.
+                values['sd'] = (values['sd'].reshape(sd_shape)) / 10
+                values['mean'] = values['mean'].reshape(sd_shape)
                 return values
 
-        # Reset sd and upper bound
-        self.parameters['sd'].bounds = (sd_lower, sd_upper)
-        self.set_parameter_values(sd=sd)
-
-        return GaussianWeightChannelsTF(self, **kwargs)
+        # TODO
+        raise NotImplementedError("Tensorflow wc.g is still a WIP")
+        return GaussianWeightChannelsTF(self, new_values=new_values,
+                                        new_bounds=new_bounds, **kwargs)
