@@ -1,3 +1,7 @@
+import copy
+import textwrap
+import itertools
+
 import numpy as np
 import scipy.optimize
 
@@ -15,6 +19,7 @@ class Model:
     # in `Model.from_json`. Be sure to update that method if these change.
     default_input = 'input'
     default_output = 'output'
+    default_target = 'target'
     default_state = 'state'
     default_backend = 'scipy'
 
@@ -54,8 +59,6 @@ class Model:
         """
         for layer in layers:
             layer.model = self  # each layer gets a reference to parent Model
-            if layer.name is None:
-                layer.name = layer.default_name
             key = layer.name
             i = 0
             while key in self._layers:
@@ -65,7 +68,7 @@ class Model:
             self._layers[key] = layer
             # Also update `Layer.name` so that there's no mismatch between
             # a Layer's name and its key in the Model.
-            layer.name = key
+            layer._name = key
 
     def get_layer_index(self, name):
         """Get integer index for Layer with `.name == name`."""
@@ -79,35 +82,49 @@ class Model:
         """TODO: add layer at specific integer index."""
         raise NotImplementedError
 
-    # TODO: maybe move the details of the evaluate implementation somewhere
-    #       else, like the bottom of the class? They (the next 6 methods)
-    #       take up a lot of space and make it harder to scroll through to check
-    #       implementations of simple interfacing methods.
-    #
-    #       Alternatively, when implementing `_evaluate_hook` (or whatever it
-    #       gets named) for `Layer`, maybe some of these details could be
-    #       offloaded there.
     def evaluate(self, input, state=None, input_name=None, state_name=None,
                  output_name=None, n=None, time_axis=0, channel_axis=1,
                  undo_reorder=True, return_full_data=True,
-                 save_layer_outputs=False, save_data_map=False,
-                 batch_size=None):
+                 use_existing_maps=False, batch_size=None):
         """Transform input(s) by invoking `Layer.evaluate` for each Layer.
 
-        TODO: add more context, examples
+        Evaluation encapsulates three steps:
+            1) Package data and metadata in a single container, possibly after
+               some reformatting depending on which options are specified.
+            2) Loop over `Model.layers`, invoking `Layer._evaluate` to
+               transform the data.
+            3) Clean up no-longer-needed data, and possibly undo re-formatting.
+        See `Model.generate_layer_data` (and subroutines) for implementation.
+
+        During the evaluation process, `input` (and `state` if provided) will
+        be packaged into a `data` dictionary, with the following structure:
+            array_name : ndarray. 
+                If `input` is a dict, each array in `input` will be
+                shallow-copied to `data` with the same key. Otherwise, arrays
+                `input` and `state` will be added to `data` with keys
+                `input_name` and `state_name` respectively (or the relevant
+                `Model.default_<name>` attribute).
+            _last_output : ndarray, list, or None
+                Return value of the most recently evaluated Layer. This key is
+                removed after evaluation is complete.
+            _state_name : str
+                Specifies key in `data` (either `state_name` or model default)
+                that should be included as an additional input for Layers that
+                have not specified `Layer.input` but have defined 
+                `Layer.state_arg`. This key is removed after evaluation.
 
         Parameters
         ----------
-        input : ndarray or dict
-            If ndarray, use this as the input to the first Layer. Otherwise,
-            use keys specified by `input_name` or `Layer.input` to determine
-            the first input.
-        state : ndarray; optional.
-            If ndarray, add to intermediate data dictionary. This option can
-            only be used in conjunction with an array `input`. If other data is
-            needed, use a dictionary input containing all data.
+        input : ndarray, list of ndarray, or dict
+            If ndarray or list, use this as the input to the first Layer.
+            Otherwise, use keys specified by `input_name` or `Layer.input` to
+            determine the first input.
+        state : ndarray or list of ndarray; optional.
+            Add this to intermediate data dictionary. This option can
+            only be used in conjunction with an array or list `input`. If other
+            data is needed, use a dictionary input containing all data.
         input_name : str; optional.
-            Specifies which data stream should be provided as input to the
+            Specifies which array should be provided as input to the
             first layer. Note that priority will be given to `Layer.input` in
             case of a clash. I.e. if `input_name is not None`, but also
             `Layer.input is not None` for the first layer, `Layer.input` will
@@ -143,24 +160,12 @@ class Model:
         return_full_data : bool; default=True
             If True, return a dictionary containing all input data and all
             uniquely-keyed Layer outputs.
-        save_layer_outputs : bool; default=False.
-            If True, force `return_full_data=True`. Additionally, each output
-            will also be saved in data['_layer_outputs'] with the form:
-                {'_layer_outputs': {
-                    f'{Layer.name}.{data_key}: eval_out}
-                }}
-            Such that the intermediate outputs of each `Layer.evaluate` are
-            guaranteed to be present in the output data, even if they would
-            normally be overwritten. This is useful for debugging and plotting,
-            but uses more memory.
-        save_data_map : bool; default=False.
-            If True, data['_data_map'] will contain the evaluated `input_map`
-            returned by `Model.evaluate_input_map`. This nested dictionary
-            contains one key per Layer with the form:
-            `{layer.name: {'args': [...], 'kwargs': {...}, 'out': [...]}`
-            where entries in the nested containers correspond to keys in `data`.
-            Similar to `save_layer_outputs`, this option can be helpful for
-            debugging (but uses much less additional memory).
+        use_existing_maps : bool; default=False.
+            If True, existing DataMaps will be used rather than generating a
+            new one for each Layer. This is disabled by default for direct
+            evaluation, but enabled by default when called from `Model.fit` to
+            eliminate unnecessary overhead for repeated evaluations of the same
+            data.
         batch_size : int; optional.
             TODO, still WIP
 
@@ -172,40 +177,111 @@ class Model:
 
         See also
         --------
-        nems.layers.base.Layer.evaluate
-        nems.models.base.Model.get_input_map
-        nems.models.base.Model.evaluate_input_map
+        nems.layers.base.Layer._evaluate
+        Model.generate_layer_data
+
+        Warnings
+        --------
+        Since arrays in `data` share memory with `input`, modifying shared
+        arrays in-place is strongly discouraged.
         
         """
+
+        # TODO: Should this be implemented outside evaluate instead?
+        #       fit will need to do this for target as well, and most of this
+        #       code is not related to evaluation, just reorganization of data.
+        #       (could go in the DataSet class if that ends up being used).
         if batch_size is not None:
             current_args = locals()
             current_args['batch_size'] = None
             current_args.pop('self')  # otherwise self will be passed twice
-            # TODO: split data into batches along first axis, assumes
-            #       user has already separated data by trial or something else
-            #       and has shape (S, T, N) instead of (T,N) where S represents
-            #       number of samples/trials/whatever.
-            batches = []
-            for batch in batches:
-                batch_data = self.evaluate(**current_args)
-                # TODO: then what? I guess anything else would be handled
-                #       by the fitter.
-                # TODO: doing this loop here is a bit wasteful, since data_map
-                #       should be the same for every batch. If some of those
-                #       details were moved into Layers, that would help.
-                #       Ex: on first loop, Model gets Layer.input_map from
-                #       each Layer, evaluates them, combines them, stores that
-                #       as the map for every batch. Then eval just has to
-                #       pass in new data each time.
 
-        # Get input keys corresponding to *args and **kwargs for each layer,
-        # and replace `input_name, state_name` with defaults if they are None.
-        input_map, input_name, state_name = self.get_input_map(
-            n, input_name, state_name
-            )
+            # TODO: per SVD request, also support passing in list directly
+            #       (e.g. if data is already a list, assume it has been split
+            #        and that each array in the list is one batch).
+
+            # TODO: Have to initialize data prior to making batches, otherwise
+            #       could still be an array. Add option to skip adding metadata
+            #       (otherwise have to pop it out here).
+
+            # Split data into batches along first axis. Assumes user has already
+            # separated data by trial or something else to get shape (S, T, N)
+            # instead of (T,N), where S represents number of samples/trials/etc.
+            # I.e. should end up with a list of arrays with shape (B, T, N), where B is
+            #       `batch_size` (i.e. number of samples per batch).
+            # NOTE: This implementation results in a list of views into the
+            #       original data (i.e. memory is shared). If changes are made,
+            #       make sure the new version doesn't result in copies (which
+            #       could increase memory usage dramatically).
+            # NOTE: The last batch will be smaller than the others if the number
+            #       of samples doesn't divide evenly. Need to set up cost to
+            #       account for that (i.e. can't average across batches on arrays,
+            #       but could average across batches on already-computed costs).
+            batched_data = {
+                k: np.split(v, np.arange(batch_size, len(v), batch_size))
+                for k, v in data.items()
+                }
+            # TODO: Concatenate samples in time. How to do this without copying?
+            #
+            #       Alternatively, *dont* concatenate since samples may be
+            #       shuffled (and some Layers implicitly assume contiguous time).
+            #       In that case, need to somehow indicate to Layers to treat
+            #       the first dim as n_samples and update their shape accordingly
+            #       I guess we'd want them to just copy the existing parameters
+            #       S times, temporarily, though it's not clear how to use that
+            #       extra dimension. A for loop always works but that will be slow.
+            #
+            #       Maybe some version of np.apply could work?
+            #       i.e. apply Layer._evaluate along first axis
+
+
+            batch_counts = [len(v) for _, v in batched_data.items()]
+            n_batches = batch_counts[0]
+            # Every array must have the same number of samples
+            # (and the same number of batches as a result).
+            assert np.all(np.array(batch_counts) == n_batches)
+
+            # Index into batched_data instead of collecting a list of batches,
+            # to ensure memory is still shared.
+            for i in range(batch_count):
+                batch = {k: v[i] for k, v in batched_data.items()}
+                # TODO: Not quite this simple. May need to change input_name,
+                #       state_name, etc. depending on how input was provided.
+                current_args['input'] = batch
+                batch_data = self.evaluate(**current_args)
+
+
+        current_args = locals()
+        current_args.pop('self')
+        data_generator = self.generate_layer_data(**current_args)
+        if n is not None: n -= 1
+        layer_data = self.get_layer_data(data_generator, n, n)[0]
+
+        if not return_full_data:
+            data = layer_data['out']  # output of final Layer._evaluate
+        else:
+            data = layer_data['data']
+        return data
+
+    def _initialize_data(self, input, state=None, input_name=None,
+                         state_name=None, time_axis=0, channel_axis=1,
+                         **eval_kwargs):
+        """Package `input` and `state` into a `data` dictionary.
+        
+        Internal for `Model.generate_layer_data`. See `Model.evaluate` for
+        parameter documentation.
+
+        Returns
+        -------
+        data : dict
+        
+        """
+
+        if input_name is None: input_name = self.default_input
+        if state_name is None: state_name = self.default_state
 
         # Initialize `data` dictionary.
-        if isinstance(input, np.ndarray):
+        if isinstance(input, (np.ndarray, list)):
             data = {input_name: input}
             if state is not None:
                 data[state_name] = state
@@ -216,330 +292,326 @@ class Model:
 
         # Rearrange and/or add axes if needed.
         for k, v in data.items():
-            # TODO: This seems safest. Any Layer that expects a 1-dim input
-            #       should be able to handle (T,1) pretty easily, and most
-            #       Layers already expect 2-dim inputs (even if 1 channel).
-            #       Ask Stephen if any good cases for not doing this.
             if data[k].ndim == 1:
-                data[k] = data[k][..., np.newaxis]
+                # TODO: raise warning that most Layers (and some optional code
+                #       in Model.evaluate) assume 2 dimensions. Don't actually
+                #       pad axis here b/c that will duplicate memory, i.e.
+                #       data[k] will point to a new copy instead of the original
+                #       array.
+                pass
             if (time_axis != 0) or (channel_axis != 1):
                 # Move time_axis to axis=0, channel_axis to axis=1
                 data[k] = np.moveaxis(v, [time_axis, channel_axis], [0, 1])
 
-        if save_layer_outputs:
-            if not return_full_data:
-                # TODO: log warning that return_full_data is going to be
-                #       overwritten since these options are incompatible.
+        reserved_keys = ['_last_output', '_state_name']
+        for rk in reserved_keys:
+            if rk in data:
+                # TODO: raise warning that this is a reserved key, data will
+                #       be overwritten in evaluate loop
                 pass
-            return_full_data = True
-            data['_layer_outputs'] = {}
 
-        data_map, last_out = self.evaluate_input_map(
-            input_map, data, output_name=output_name,
-            save_layer_outputs=save_layer_outputs
-            )
-        if save_data_map:
-            data['_data_map'] = data_map
+        # First Layer will use this key if Layer.input is None.
+        data['_input_name'] = input_name
+        # Layers with a `state_arg` that don't specify any inputs will get
+        # the array at this key, if it exists, in addition to last_output.
+        data['_state_name'] = state_name
+        # No outputs yet
+        data['_last_output'] = None
+
+        return data
+
+
+    def _evaluate_layer(self, layer, data):
+        """Evaluates one Layer. Internal for `Model.generate_layer_data`.
+        
+        Returns
+        -------
+        args : list of ndarray
+            Positional arguments for `Layer.evaluate`.
+        kwargs : dict of ndarray
+            Keyword arguments for `Layer.evaluate`.
+        output : ndarray or list of ndarray
+            Return value of `Layer.evaluate(*args, **kwargs)`.
+        
+        """
+        
+        # Get input & output arrays
+        args, kwargs, output = layer._evaluate(data)
+
+        # Save output (or don't) based on Layer.DataMap.
+        # data_keys is always a list, but output might be a list or one array.
+        data_keys = layer.data_map.out
+        if isinstance(output, (list, tuple)):
+            data.update({k: v for k, v in zip(data_keys, output)
+                        if k is not None})
+        elif data_keys[0] is not None:
+            data[data_keys[0]] = output
+        # Always save output to _last_output, for use by subsequent Layers.
+        data['_last_output'] = output
+
+        return args, kwargs, output
+
+
+    def _finalize_data(self, final_layer, data, output_name=None,
+                       undo_reorder=True, time_axis=0, channel_axis=1,
+                       **eval_kwargs):
+        """Remove metadata and undo re-formatting if needed.
+
+        Internal for `Model.generate_layer_data`. See `Model.evaluate` for
+        parameter documentation.
+
+        Returns
+        -------
+        None
+        
+        """
+
+        if output_name is None: output_name = self.default_output
+        # Remove metadata, no longer needed.
+        _ = data.pop('_input_name')
+        _ = data.pop('_state_name')
+
+        # Re-name last output if keys not specified by Layer
+        final_output = data.pop('_last_output')
+        if final_layer.output is None:
+            data[output_name] = final_output
+            # Re-map `data_map.out` so that it reflects `output_name`.
+            final_layer.data_map.map_outputs(final_output, output_name)
 
         if undo_reorder:
             # Rearrange axes if needed (reverse of above).
             if (time_axis != 0) or (channel_axis != 1):
                 for k, v in data.items():
-                    if k == '_layer_outputs':
-                        continue
                     # Move axis=0 to time_axis, axis=1 to channel_axis.
                     data[k] = np.moveaxis(v, [0, 1], [time_axis, channel_axis])
 
-        if not return_full_data:
-            data = last_out
-        return data
 
-    def get_input_map(self, n=None, input_name=None, state_name=None):
-        """Get each `Layer.input` formatted as arguments for `Layer.evaluate`.
+    # TODO: possibly move this method and any related subroutines to a separate
+    #       module (inside a new `base` directory), with simple wrappers in
+    #       Model as the public-facing API.
+    def generate_layer_data(self, input, copy_data=False,
+                            use_existing_maps=False, **eval_kwargs):
+        """Generate input and output arrays for each Layer in Model.
         
+        This method serves as the core loop for `Model.evaluate`, but is exposed
+        separately for use in plotting, debugging, etc. The loop is implemented
+        as a generator to reduce memory overhead when only one Layer at a time
+        is needed.
+
         Parameters
         ----------
-        n : int; optional.
-            Map the first `n` Layers (all by defualt).
-        input_name : str; optional.
-            Specifies which data stream should be provided as input to the
-            first layer. See `Model.evaluate` for details.
-        state_name : str; optional.
-            Data key for `state`, if given.
+        input : dict or ndarray
+            See `Model.evaluate`.
+        copy_data : bool; default=False.
+            If True, a deep copy of data will be stored in `layer_data['data']`
+            after each `Layer._evaluate`. This will be very memory intensive
+            for large data, and is generally not recommended.
+        use_existing_maps : bool; default=False.
+            If True, existing DataMaps will be used rather than generating a
+            new one for each Layer. This is disabled by default for direct
+            evaluation, but enabled by default when called from `Model.fit` to
+            eliminate unnecessary overhead for repeated evaluations of the same
+            data.
+        eval_kwargs : dict
+            Additional keyword arguments for `Model._initialize_data` and
+            `Model._finalize_data`. See `Model.evaluate` for documentation.
 
-        Returns
-        -------
-        (input_map, input_name, state_name) : (dict, str, str)
-            `input_map` has the following structure, with one key per Layer:
-            {'layer.name': {'args': [...], 'kwargs': {...}, 'out': []},
-            where 'args' and 'kwargs' refer to positional and keyword arguments
-            for `Layer.evaluate` and `out` refers to the values returned by
-            `Layer.evaluate`.
+        Yields
+        ------
+        layer_data : dict
+            `layer_data` has the following structure: {
+                'index': int, index of Layer within Model.
+                'layer': str, Layer.name.
+                'args': list of ndarray, positional arguments
+                    for `Layer._evaluate`.
+                'kwargs': dict of ndarray, keyword arguments
+                    for `Layer._evaluate`
+                'out': ndarray or list of ndarray, return value of
+                    `Layer._evaluate(*args, **kwargs)`.
+                'data' : dict
+                    See `Model.evaluate` for details.
+                }
+
+        Warnings
+        --------
+        layer_data['data'], is a reference to a data structure that is
+        iteratively updated in-place during evaluation. Modifying this
+        structure in-place is strongly discouraged, as it can violate the state
+        expectations of not-yet-evaluated Layers. To make modifications safely,
+        use `copy_data=True`.
 
         See also
         --------
-        nems.models.base.Model.evaluate
+        Model.get_layer_data
+        Model.print_layer_data
 
         Examples
         --------
-        TODO
-        
+        Get a list of all outputs in memory simultaneously:
+        >>> generator = generate_layer_data(input, **eval_kwargs)
+        >>> data_list = [d['out'] for d, _ in generator]
+
+        Get positional arguments for the first layer:
+        >>> generator = generate_layer_data(input, **eval_kwargs)
+        >>> args = next(generator)['args']
+
         """
-        if input_name is None:
-            input_name = self.default_input
-        if state_name is None:
-            state_name = self.default_state
 
-        input_map = {}
-        _input_name = input_name
-        for layer in self.layers[:n]:
-            next_input = layer.input
-            if not isinstance(next_input, list):
-                next_input = [next_input]
-            args, kwargs = self._parse_input(
-                layer, next_input, _input_name, state_name
-                )
-            input_map[layer.name] = {'args': args, 'kwargs': kwargs, 'out': []}
-            _input_name = None  # only used for first layer
+        data = self._initialize_data(input, **eval_kwargs)
 
-        return input_map, input_name, state_name
+        max_n = len(self.layers)
+        for n, layer in enumerate(self.layers):
+            if not use_existing_maps:
+                layer.reset_map()
+            a, k, o = self._evaluate_layer(layer, data)
+            layer_data = {
+                'index': n, 'layer': layer.name,
+                'args': a, 'kwargs': k, 'out': o
+                }
 
-    def _parse_input(self, layer, next_input, input_name, state_name):
-        """Map `Layer.input` to *args and **kwargs for `Layer.evaluate`.
-        
-        Internal for `Model.get_input_map`.
-        
-        Returns
-        -------
-        args : list
-            Keys to arrays in `data` that correspond to positional arguments
-            for `Layer.evaluate`.
-        kwargs : dict
-            Key-value pairs where keys correspond to names of keyword arguments
-            for `Layer.evaluate`, and values correspond to keys for arrays
-            stored in `data`.
-        
-        """
-        args = []
-        kwargs = {}
-        for key in next_input:
-            if key is None:
-                # NOTE: This code will not be reached for None keys inside
-                #       a dictionary `Layer.input`. In that case, data keys for
-                #       state and first-layer inputs should be specified in
-                #       the dictionary.
-                args.append(input_name)  # still None unless first layer
-                if layer.state_name is not None:
-                    kwargs[layer.state_name] = state_name
-            elif isinstance(key, dict):
-                kwargs.update({k: v for k, v in key.items()})
-            else:
-                args.append(key)
+            if n < (max_n - 1):
+                if copy_data:
+                    layer_data['data'] = copy.deepcopy(data)
+                else:
+                    layer_data['data'] = data
+                yield layer_data
 
-        return args, kwargs
+        # On final layer, only update data after evaluation
+        self._finalize_data(layer, data, last_output=o, **eval_kwargs)
+        if copy_data:
+            layer_data['data'] = copy.deepcopy(data)
+        else:
+            layer_data['data'] = data
+
+        yield layer_data
 
 
-    def evaluate_input_map(self, input_map, data, output_name=None,
-                           save_layer_outputs=False, copy=False):
-        """Evaluate each Layer in `input_map` and set `input_map['out']`.
+    # TODO: maybe remove the data_generator arg and just have this wrap
+    #       generate_layer_data? 
+    def get_layer_data(self, data_generator, first_index=None, last_index=None):
+        """Return data for layers between specified indices (inclusive).
         
         Parameters
         ----------
-        input_map : dict.
-            Mapping of data keys to `Layer.evaluate` arguments.
-            See `get_input_map` for details on structure.
-        data : dict of ndarray.
-            Input data for Model. See `Model.evaluate` for details on structure.
-        output_name : str; optional.
-            Output name to use for the final Layer if `Layer.output` is None.
-            If not specified, `Model.default_output` will be used.
-        save_layer_outputs : bool.
-            Specifies whether to save all intermediate outputs. See
-            `Model.evaluate` for details.
-        copy : bool.
-            If True, use a copy of `data` instead of modifying in-place.
+        data_generator : generator
+            Return value of `Model.generate_layer_data`.
+        first_index : int; optional.
+            Index within Model of the first Layer to get data for.
+        last_index : int; optional.
+            Index within Model of the last Layer to get data for.
 
         Returns
         -------
-        (input_map, last_out) : (dict, list of ndarray)
-            `input_map` has the same structure as in `get_input_map`, but
-            `input_map['out']` will now be filled in. `last_out` is the value(s)
-            returned by the final Layer.
+        list of (dict, dict)
+            See `Model.generate_layer_data`.
+
+        Examples
+        --------
+        Get a list of all inputs & outputs in memory simultaneously:
+        >>> generator = generate_layer_data(input, **eval_kwargs)
+        >>> data_list = get_layer_data(generator)
+
+        Get the keyword arguments for the 3rd Layer:
+        >>> generator = generate_layer_data(input, **eval_kwargs)
+        >>> kwargs3 = get_layer_data(generator, 3, 3)['kwargs']
+        
+        """
+        if last_index is not None: last_index += 1
+        subset = itertools.islice(data_generator, first_index, last_index)
+        return [d for d in subset]
+
+    def print_layer_data(self, input, max_char=79, max_array_length=20,
+                         show_full_data=False, **eval_kwargs):
+        """Pretty-print the return value of `Model.generate_layer_data`.
+
+        Parameters
+        ----------
+        input : ndarray or dict
+            See `Model.evaluate`.
+        max_char : int; default=79.
+            Maximum number of characters to display on each line.
+            TODO: separators currently ignore this.
+        max_array_length : int; default=20.
+            Show truncated arrays if they contain more than this many entries.
+            Equivalent to `np.set_printoptions(threshold=max_array_length)`,
+            but the previous threshold will be reset after printing.
+            TODO: add precision option?
+        show_full_data : bool; default=False.
+            If True print the entire `data` dictionary for each Layer.
+
+        TODO: option to return string instead of printing?
+        
+        """
+        def wrap(k, v):
+            return textwrap.fill(f'{k}: {str(v)}', max_char) + '\n' + '-'*16
+
+        current_threshold = np.get_printoptions()['threshold']
+        np.set_printoptions(threshold=max_array_length)
+
+        for d in self.generate_layer_data(input, **eval_kwargs):
+            _data = d.pop('data')
+
+            # Input/output info
+            print('_'*36 + f'in/out:' + '_'*36)
+            for k, v in d.items():
+                if isinstance(v, list):
+                    print(f'{k}:')
+                    i = 0
+                    for val in v:
+                        print(wrap(i, val))
+                        i += 1
+                    if i == 0:
+                        print('-'*16)
+                elif isinstance(v, dict):
+                    print(f'{k}:')
+                    j = 0
+                    for key, value in v.items():
+                        print(wrap(key, value))
+                        j += 1
+                    if j == 0:
+                        print('-'*16)
+                else:
+                    print(wrap(k, v))
+            print('\u203E'*79)
+
+            if show_full_data:
+                # Data dictionary
+                print('_'*38 + 'data' + '_'*37)
+                for k, v in _data.items():
+                    print(wrap(k, v))
+                print('\u203E'*79 + '\n\n')
+
+        np.set_printoptions(threshold=current_threshold)
+
+    def get_data_maps(self):
+        """Get a dictionary of {Layer.name: Layer.DataMap} for all Layers.
+
+        Similar to `Model.layers`, this dictionary is wrapped so that indexing
+        with integers, slices, or multiple keys is also possible.
+        
+        Returns
+        -------
+        dict
 
         See also
         --------
-        nems.models.base.Model.evaluate
-        nems.models.base.Model.get_input_map
+        nems.layers.base.map.DataMap
         
         """
-        if copy:
-            data = data.copy()
-
-        if output_name is None:
-            output_name = self.default_output
-
-        last_layer_name = list(input_map.keys())[-1]
-        eval_out = None
-        for layer_name in input_map:
-            layer = self.layers[layer_name]
-            next_output = layer.output
-            # Last layer's output must be saved
-            if (layer_name == last_layer_name) and (next_output is None):
-                next_output = output_name
-
-            # Get arrays corresponding to data keys in input_dict.
-            eval_args, eval_kwargs, _ = self.layer_data_from_map(
-                data, input_map, layer_name, eval_out
-                )
-
-            # Generate layer output
-            eval_out = layer.evaluate(*eval_args, **eval_kwargs)
-            if (eval_out is None) or (len(eval_out) == 0):
-                raise ValueError(f"Layer {layer_name} did not return anything.")
-            # Cast output as list, for consistency and fewer checks elsewhere.
-            if isinstance(eval_out, tuple):
-                eval_out = list(eval_out)
-            if not isinstance(eval_out, list):
-                eval_out = [eval_out]
-
-            # Determine keys for (possibly) saving `eval_out` in `data`,
-            output_keys = self._parse_output(layer, next_output, eval_out)
-            input_map[layer_name]['out'] = output_keys
-
-            for k, v in zip(output_keys, eval_out):
-                # Add singleton channel axis if needed.
-                if v.ndim == 1:
-                    v = v[..., np.newaxis]
-                if k is not None:
-                    data[k] = v
-                if save_layer_outputs:
-                    # Save all intermediate outputs with unique keys
-                    data['_layer_outputs'][f'{layer.name}.{k}'] = v
-        # End loop
-
-        return input_map, eval_out
-
-    def _parse_output(self, layer, next_output, eval_out):
-        """Determine where/whether to save `eval_out` in `data`.
-        
-        Internal for `evaluate_input_map`.
-
-        Returns
-        -------
-        output_keys : list
-            Entries will be all None (`eval_out` is not saved) or all strings
-            (`data[string] = eval_out`). If `next_output` is a string and
-            `len(eval_out) > 1`, then that string will be incremented in the
-            form of `string.{i}` to get a unique key for each output.
-        
-        """
-        
-        if next_output is not None:
-            if isinstance(next_output, str):
-                output_keys = [
-                    f"{next_output}.{i}" if i != 0 else f"{next_output}"
-                    for i in range(len(eval_out))
-                    ]
-            elif isinstance(next_output, list):
-                output_keys = next_output
-            else:
-                raise TypeError(
-                    f"Unrecognized type for {layer.name}.output:"
-                    f"{type(next_output)}"
-                    )
-        else:
-            output_keys = [None]*len(eval_out)
-        
-        return output_keys
-
-
-    def layer_data_from_map(self, data, data_map, layer_name, last_out=None):
-        """Get arrays from `data` that correspond to `Layer.evaluate`.
-
-        Parameters
-        ----------
-        data : dict of ndarray.
-            Input data for Model. See `Model.evaluate` for details on structure.
-        data_map : dict
-            Mapping of data to args and kwargs for `Layer.evaluate`, 
-            and outputs of `Layer.evaluate`. See `get_input_map` for details
-            on structure.
-        layer_name : str
-            Name of the layer to get data for.
-        last_out : list of ndarray; optional.
-            Return value of `Layer.evaluate` for the previous Layer. Must be
-            provided if `Layer.input is None` or if `Layer.input` is a
-            dictionary and contains one or more None values.
-        
-        Returns
-        -------
-        (args, kwargs, out) : (list, dict, list)
-            Entries are ndarrays pulled from `data`.
-        
-        """
-        layer_map = data_map[layer_name]
-        missing_input = ("Cannot determine Layer input in Model.evaluate, \n"
-                         f"specify `last_out` or `{layer_name}.input`.")
-
-        args = []
-        for a in layer_map['args']:
-            if a is None:
-                # Supply each of the previous outputs as a separate input,
-                # i.e. `layer.evaluate(*last_out)`.
-                if last_out is None:
-                    raise ValueError(missing_input)
-                args.extend(last_out)
-            elif isinstance(a, list):
-                # Supply a list of arrays at all keys as a single argument,
-                # i.e. `layer.evaluate([array1, array2, ...])`.
-                args.append([data[k] for k in a])
-            else: # (a should be a string)
-                # Add one array to arguments,
-                # i.e. `layer.evaluate(array)`.
-                args.append(data[a])
-
-        kwargs = {}
-        for k, v in layer_map['kwargs'].items():
-            if v is None:
-                # Supply keyword `k` with a list of the previous outputs,
-                # i.e. `layer.evaluate(k=[out1, out2, ...])`.
-                if last_out is None:
-                    raise ValueError(missing_input)
-                kwargs[k] = last_out
-            elif isinstance(v, list):
-                # Supply keyword `k` with a list of the indicated arrays,
-                # i.e. `layer.evaluate(k=[array1, array2, ...])`.
-                kwargs[k] = [data[_k] for _k in v]
-            else: # (v should be a string)
-                # Supply keyword `k` with a single array,
-                # i.e. `layer.evaluate(k=array1)`.
-                kwargs[k] = data[v]
-
-        # `layer_map['out']` will be empty until that layer gets evaluated,
-        out = []
-        for o in layer_map['out']:
-            if o is None:
-                # If one output key is None, all of them will be None, so we
-                # can skip the loop since these arrays simply don't exist in
-                # `data`. The only way to get a reference to these arrays
-                # outside of evaluation is to use `save_layer_outputs=True`
-                # and check `data['_layer_outputs']`.
-                out = layer_map['out']
-                break
-            else: # o should be a string
-                out.append(data[o])
-
-        return args, kwargs, out
-
+        return _LayerDict({layer.name: layer.data_map for layer in self.layers})
 
     def predict(self, input, return_full_data=False, **eval_kwargs):
         """As `Model.evaluate`, but return only the last output by default."""
         return self.evaluate(input, return_full_data=return_full_data,
                              **eval_kwargs)
 
+
+    # TODO: Move the backend implementations and any related subroutines to a
+    #       separate module (inside a new `base` directory), with simple
+    #       wrappers in Model as the public-facing API.
     def fit(self, input, target=None, target_name=None, backend=None,
             cost_function='mse', fitter_options=None, log_spacing=5,
-            sanitize_data=False, **eval_kwargs):
+            undo_reorder=False, use_existing_maps=True, **eval_kwargs):
         """Optimize model parameters to match `Model.predict(input)` to target.
         
         TODO: where do jackknife indices fit in? possibly use segmentor idea
@@ -588,49 +660,31 @@ class Model:
             Log progress of fitter every `log_spacing` iterations.
             Note: this is the number of iterations, not the number of cost
             function evaluations (of which there may be many per iteration).
-        sanitize_data : bool; default=False.
-            If True, pass input through `Model.evaluate(undo_reorder=False)`
-            one time prior to fitting, so that `np.moveaxis` and `newaxis`
-            operations are not repeated on every evaluation while fitting.
-
+        undo_reorder : bool; default=False.
+            If True, and data axes were re-ordered, revert to the original
+            ordering after evaluating. Set False to return the re-ordered data.
+            This is disabled by default during fitting to reduce overhead.
+        use_existing_maps : bool; default=True.
+            If True, existing DataMaps will be used rather than generating a
+            new one for each Layer. This is disabled by default for direct
+            evaluation, but enabled by default when called from `Model.fit` to
+            eliminate unnecessary overhead for repeated evaluations of the same
+            data.
+        eval_kwargs : dict
+            Other keyword arguments will be supplied to `Model.evaluate`.
 
         """
-        if target is None:
-            # Must specify either target or target_name
-            target = input[target_name]
-        if fitter_options is None:
-            # TODO: maybe set Model.default_fitter_options for this instead?
-            #       
-            fitter_options = {}
-        if backend is None:
-            backend = self.default_backend
+
+        if target_name is None: target_name = self.default_target
+        if target is None: target = input[target_name]
+        # TODO: maybe set Model.default_fitter_options for this instead?
+        if fitter_options is None: fitter_options = {}
+        if backend is None: backend = self.default_backend
         if isinstance(cost_function, str):
             # Convert string reference to metric function
             cost_function = get_metric(cost_function)
-
-        if sanitize_data:
-            # Evaluate once to set data-ordering and dimension padding, so that
-            # those operations are not repeated for each evaluation.
-            # TODO: this is very kludgy and not comparmentalized well... work on a
-            #       better option, or maybe just skip this altogether and inform
-            #       users that they should either re-order prior to fitting or
-            #       accept the minor performance hit.
-            # TODO: After some rough testing, this doesn't seem to be worth it.
-            #       About a 5% increase (or less) for fit duration on 3-dim
-            #       random data. Leaving it here for now to do some more testing
-            #       when larger models are implemented, but can likely be axed.
-            data = self.evaluate(input, undo_reorder=False, **eval_kwargs)
-            if isinstance(input, np.ndarray):
-                key = eval_kwargs.get('input_name', self.default_input)
-                input = data[key]
-            else:
-                input = data
-            eval_kwargs['time_axis'] = 0
-            eval_kwargs['channel_axis'] = 1
-
-
-        # TODO: prediction is always a list, target currently isn't being
-        #       treated as one. Need to do some extra checks to align those
+        # TODO: prediction & target currently assumed to be arrays, but they can
+        #       also be lists. Need to do some extra checks to align those
         #       correctly for the cost function. Only working so far by accident,
         #       will break if more than one array in prediction list.
         #
@@ -638,9 +692,47 @@ class Model:
         #       and take the average? (allows different lengths)
         #       Concatenate and compute all at once? (all same lengths)
         #       Other? (e.g. multiple predicts vs one target, take average)
+        #
+        #       wish list:  matching lists (compare, add/average on concat.)
+        #                   matching arrays
+        #                   one array -> list
+        #                   list -> one array
+        #                   (roughly in order of priority)
+        #       *also think about best way to compare cost for multiple neurons etc
+
+        # TODO: Move this (and TF backend) to separate modules. Plan for now
+        #       would be a 'backends' package, and move 'tf' package there
+        #       along with a new 'scipy' package. Inside those, can have
+        #       'fit_nems_model' or something that implements these details.
+        #       Then set it up so we don't need to ad a new if statement for
+        #       every new backend, just have something along the lines of
+        #       _lookup_backend('tf') and enforce a stereotyped structure with
+        #       the same name in all backends for the `fit_nems_model` routine.
         if backend == 'scipy':
-            # TODO: probably move this to a subroutine? will decide after
-            #       sketching out more
+            # TODO: (discuss this with SVD)
+            # This won't work correctly with batch formatting b/c time_axis
+            # and channel_axis defaults should be 1, 2 instead of 0, 1.
+            # Need to do something similar to
+            # what TF backend does, but only if batch dimension is present.
+            # Alternatively, we can state that data should *always* have a 
+            # samples/trials dimension similar to TF, and/or maybe prepend a
+            # singleton axis if some kwarg isn't specified.
+                # Remove first dimension of data before passing to `Model.evaluate`.
+                # input = {k: v[0, ...] for k, v in input.items()}
+
+            # Set data-ordering prior to fitting so that those operations are
+            # not repeated for each evaluation. 
+            data = self._initialize_data(
+                input, undo_reorder=undo_reorder, 
+                use_existing_maps=use_existing_maps,
+                **eval_kwargs
+                )
+            if not undo_reorder:
+                # Reset these to default values, otherwise arrays will
+                # be improperly reordered if these kwargs had non-default values.
+                _ = eval_kwargs.pop('time_axis', None)
+                _ = eval_kwargs.pop('channel_axis', None)
+
             def _scipy_cost_wrapper(_vector, _model, _input, _target,
                                     _cost_function, _eval_kwargs):
                 _model.set_parameter_vector(_vector, ignore_checks=True)
@@ -669,13 +761,73 @@ class Model:
                 bounds=bounds,
                 method='L-BFGS-B', callback=_scipy_callback, **fitter_options
             )
+            print(
+                f"Fit successful: {fit_result.success}\n"
+                f"Status: {fit_result.status}\n"
+                f"Message: {fit_result.message}"
+            )
             improved_parameters = fit_result.x
             self.set_parameter_vector(improved_parameters)
 
         elif (backend == 'tf') or (backend == 'tensorflow'):
-            # TODO: similar to scipy, last step should set new model parameters
-            #       in-place
-            raise NotImplementedError
+            import tensorflow.keras as keras
+            from nems.tf import build_model
+
+            # NOTE: expects arrays in data to already be formatted as shape
+            #       (S,T,C) instead of (T,C), same for target as well.
+
+            # Remove first dimension of data before passing to `Model.evaluate`,
+            # since we only need to fit one batch/sample to set the appropriate
+            # DataMaps.
+            # TODO: this is pretty kludgy, clean this up. Also wont' work
+            #       for array inputs
+            input2 = {k: v[0, ...] for k, v in input.items()}
+            data2 = self.evaluate(
+                input2, undo_reorder=False, use_existing_maps=False,
+                **eval_kwargs
+                )
+            # Get data mapping of inputs & outputs for each Layer.
+            data_maps = self.get_data_maps()
+
+            # Build TF model
+            # TODO: make this a separate method so that models can be compared
+            #       w/o fitting.
+            tf_kwargs = {}  # TODO
+            tf_layers = [layer.as_tensorflow_layer(**tf_kwargs)
+                         for layer in self.layers]
+            input.pop(target_name, None)
+            tf_model = build_model(
+                data_maps, tf_layers, input, batch_size=None, name=self.name
+                )
+
+            print('TF model built...')
+            print(tf_model.summary())
+            # TODO: This assumes a single output (like our usual models).
+            #       Need to tweak this to be able to fit outputs from multiple
+            #       layers.
+            final_layer = self.layers[-1].name
+            tf_model.compile(
+                optimizer=keras.optimizers.Adam(),
+                loss={final_layer: keras.losses.MeanSquaredError()}
+            )
+
+            tf_model.fit(
+                input, {final_layer: target}
+            )
+
+            # Save weights back to NEMS model
+            # (first two TF layers are input layers, skip it).
+            # TODO: This assumes there aren't any other extra layers added
+            #       by TF. That might not be the case for some model types.
+            skip = len(tf_model.inputs)
+            for nems_layer, tf_layer in zip(self.layers, tf_model.layers[skip:]):
+                nems_layer.set_parameter_values(tf_layer.weights_to_values())
+
+            # TODO: more information here.
+            print('TF model fit finished, parameters have been updated.')
+
+            return tf_model
+            
 
     def score(self, prediction, target):
         # TODO: this should point to an independent utility function, but
@@ -1155,3 +1307,49 @@ class _LayerDict:
 
     def __repr__(self):
         return self._dict.__repr__()
+
+
+# TODO: may not end up doing this, but sketching out the idea here.
+#       Essentially a watered-down Recording that handles data sanitation
+#       but otherwise acts as a dict, no epochs/splitting/etc. Possibly
+#       to/from json but would just be a wrapper for saving the dict, goal is
+#       for the class to be stateless except for ._data.
+class DataSet(dict):
+    def __init__(self, input, state=None, target=None, input_name=None,
+                 state_name=None, output_name=None, target_name=None,
+                 time_axis=0, channel_axis=1, undo_reorder=True):
+        # TODO: may not actually need all these kwargs, or may not need to
+        #       save them all as attrs
+        self.initialize_data(input, state, target)  # other kwargs too
+
+    def initialize_data(self, input, state, target):  # other kwargs too
+        # TODO: do stuff from Model._initialize_data to generate data
+        # TODO: 3 options for parsing default names:
+        #       1) do it in the model before creating DataSet, make input and
+        #          output names required.
+        #       2) do it here with reference to Model
+        #          (breaks statelessness, Model.default_<name> could change.
+        #           also breaks compartmentalization)
+        #       3) do it here with extra kwargs for defaults.
+        #       4) do it here and move defaults to be DataSet class attrs
+        #          (less convenient for users)
+        data = input
+        super().__init__(**data)  # enables __getitem__, __setitem__, etc.
+
+    def finalize_data(self):
+        # TODO: port Model._finalize_data() here.
+        pass
+
+    def passthrough_data_operations(self):
+        # TODO: (not a real method name) convenience wrapper for
+        #       `for array in data, get fn(array)`
+        #       and/or `for array in data, set array = fn(array)` (i.e. inplace)
+        #       For example, to apply the same jacknife indices to all arrays
+        pass
+
+    def other_sanitation(self):
+        # TODO: (not a real method name) what else would be useful?
+        pass
+
+    
+    

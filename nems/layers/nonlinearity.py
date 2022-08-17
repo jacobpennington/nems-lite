@@ -31,21 +31,21 @@ class StaticNonlinearity(Layer):
         super().__init__(**kwargs)
         self.skip_nonlinearity = False
 
-    def evaluate(self, *inputs):
+    def evaluate(self, input):
         """Apply `nonlinearity` to input(s). This should not be overwriten."""
         if not self.skip_nonlinearity:
-            output = self.nonlinearity(inputs)
+            output = self.nonlinearity(input)
         else:
             # TODO: This works for time on 0-axis and 1-dim parameters,
             #       but need to add option to make this more general.
             # If there's a `shift` parameter for the subclassed nonlinearity,
             # still apply that. Otherwise, pass through inputs.
-            output = [inputs + self.parameters.get('shift', 0).values]
+            output = input + self.parameters.get('shift', 0)
         return output
 
-    def nonlinearity(self, *inputs):
+    def nonlinearity(self, input):
         """Pass through input(s). Subclasses should overwrite this."""
-        return inputs
+        return input
 
 
 class LevelShift(StaticNonlinearity):
@@ -80,7 +80,7 @@ class LevelShift(StaticNonlinearity):
         shift = Parameter('shift', shape=self.shape, prior=prior)
         return Phi(shift)
 
-    def nonlinearity(self, *inputs):
+    def nonlinearity(self, input):
         """constant shift
 
         Notes
@@ -89,7 +89,7 @@ class LevelShift(StaticNonlinearity):
 
         """
         shift, = self.get_parameter_values()
-        return [x + shift for x in inputs]
+        return input + shift
 
     @layer('lvl')
     def from_keyword(keyword):
@@ -161,23 +161,15 @@ class DoubleExponential(StaticNonlinearity):
             )
         return phi
 
-    def nonlinearity(self, *inputs):
+    def nonlinearity(self, input):
         """Apply double exponential sigmoid to input x: $b+a*exp[-exp(k(x-s)]$.
         
         See Thorson, Liénard, David (2015).
         
         """
         base, amplitude, shift, kappa = self.get_parameter_values()
-        output = []
-        for x in inputs:
-            y = base + amplitude * np.exp(-np.exp(  # double exponential
-                    np.array(-np.exp(kappa)) * (x - shift)  # exp(kappa) > 0
-                    ))
-            # TODO: fix dim alignment so that the previous transformation
-            #       doesn't add an extra axis (presumably something to do with
-            #       array broadcasting).
-            z = np.squeeze(y, axis=0)
-            output.append(z)
+        inner_exp = (-np.exp(kappa) * (input - shift))
+        output = base + amplitude * np.exp(-np.exp(inner_exp))
         return output
 
     @layer('dexp')
@@ -229,7 +221,7 @@ class RectifiedLinear(StaticNonlinearity):
 
         return phi
 
-    def nonlinearity(self, *inputs):
+    def nonlinearity(self, input):
         """Set input values to 0 if <= `-1*shift`.
         
         Notes
@@ -239,7 +231,7 @@ class RectifiedLinear(StaticNonlinearity):
         
         """
         # TODO: add ability to multiply Parameter by scalar
-        return [x * (x > -self.parameters['shift'].values) for x in inputs]
+        return input * (input > -self.parameters['shift'].values)
 
     @layer('relu')
     def from_keyword(keyword):

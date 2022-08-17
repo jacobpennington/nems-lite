@@ -1,15 +1,27 @@
+import numpy as np
+
 from nems.registry import layer
 from nems.visualization import plot_layer
 from .phi import Phi
+from .map import DataMap
 
 
 # TODO: add more examples, and tests
 # TODO: add option to propagate other Parameter options from Layer.__init__,
 #       like `default_bounds` and `initial_value`.
 class Layer:
-    """Encapsulates one data-transformation step of a NEMS Model.
+    """Encapsulates one data-transformation step in a  Model.
 
-    Base class for NEMS Layers.
+    Attributes
+    ----------
+    subclasses : dict
+        A dictionary of classes that inherit from Layer, used by `from_json`.
+    state_arg : str or None; optional.
+        If string, `state_arg` will be interpreted as the name of an
+        argument for `Layer.evaluate`. During Model evaluation, if
+        `Layer.input is None` and a `state` array is provided to
+        `Model.evaluate`, then `state` will be added to other inputs as a
+        keyword argument, i.e.: `layer.evaluate(*inputs, **state)`.
 
     """
 
@@ -19,6 +31,8 @@ class Layer:
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         cls.subclasses[cls.__name__] = cls
+
+    state_arg = None
 
     def __init__(self, input=None, output=None, parameters=None,
                  priors=None, bounds=None, name=None, shape=None):
@@ -68,15 +82,6 @@ class Layer:
             Many Layer subclasses use this keyword argument to specify the
             shape of their Parameters. See individual subclasses for expected
             format.
-
-        Attributes
-        ----------
-        state_name : str or None; optional.
-            If string, `state_name` will be interpreted as the name of an
-            argument for `Layer.evaluate`. During Model evaluation, if
-            `Layer.input is None` and a `state` array is provided to
-            `Model.evaluate`, then `state` will be added to other inputs as a
-            keyword argument, i.e.: `layer.evaluate(*inputs, **state)`.
 
         Warnings
         --------
@@ -145,7 +150,10 @@ class Layer:
         self.shape = shape
         # In the event of a name clash in a Model, an integer will be appended
         # to `Layer.name` to ensure that all Layer names are unique.
-        self.name = name
+        # TODO: make name property instead and save _name, default_name here.
+        #       (so that other code doesn't need to check for None name)
+        self._name = name 
+        self.default_name = f'{type(self).__name__}(shape={self.shape})'
         self.model = None  # pointer to parent ModelSpec
 
         if parameters is None:
@@ -159,14 +167,15 @@ class Layer:
         if bounds is not None:
             self.set_bounds(**bounds)
 
-        # TODO: rename this to state_kwarg to avoid confusion with state_name
-        #       in Model.evaluate. Have to change in a few other places as well.
-        self.state_name = None
+        self.data_map = DataMap(self)
 
     @property
-    def default_name(self):
-        """Get default name for Layer, `SubClass(shape=self.shape)."""
-        return f'{type(self).__name__}(shape={self.shape})'
+    def name(self):
+        """Get Layer.name if specified, or `SubClass(shape=self.shape)."""
+        name = self._name
+        if name is None:
+            name = self.default_name
+        return name
 
     @layer('baseclass')
     @staticmethod
@@ -290,30 +299,58 @@ class Layer:
         """
         return Phi()
 
-    # TODO:
-    def _evaluate(self, data, use_cached_map=False):
-        args, kwargs = self._get_input(data)
+    def reset_map(self):
+        """Overwrite `Layer.data_map` with a fresh copy.
+        
+        This will remove information about outputs and any data-dependent
+        information (like first input).
+        
+        """
+        self.data_map = DataMap(self)
+
+    def _evaluate(self, data):
+        """Get inputs from `data`, evaluate them, and update `Layer.data_map`.
+
+        Parameters
+        ----------
+        data : dict
+            See `Model.evaluate` for details on structure.
+
+        Returns
+        -------
+        args : list of ndarray
+            Positional arguments for `Layer.evaluate`.
+        kwargs : dict of ndarray
+            Keyword arguments for `Layer.evaluate`.
+        output : ndarray or list of ndarray
+            Return value of `Layer.evaluate(*args, **kwargs)`.
+        
+        Notes
+        -----
+        This method is dependent on the state of `data`, so is best thought of
+        as internal to `Model.evaluate` even though it technically does not
+        rely on the state of a particular Model.
+
+        See also
+        --------
+        nems.models.base.Model.evaluate
+        nems.layers.base.map.DataMap
+
+        """
+        args, kwargs = self.data_map.get_inputs(data)
         output = self.evaluate(*args, **kwargs)
-        data_map = self._map_output(self, output)
-        return output, data_map
 
-    def _get_input(self, data):
-        if self.input is None:
-            input = data['last_output']
-        else:
-            # TODO: port code from model.evaluate
-            #       (equiv of layer_data_from_map)
-            pass
+        # Add singleton channel axis to each array if missing.
+        if isinstance(output, (list, tuple)):
+            output = [x[..., np.newaxis] if x.ndim == 1 else x for x in output]
+        elif output.ndim == 1:
+            output = output[..., np.newaxis]
+        
+        # Add output information to DataMap
+        self.data_map.map_outputs(output)
 
-    def _map_output(self, output):
-        # TODO: port code from model.evaluate
-        #       (equiv of evaluate_input_map)
-        pass
-
-    def get_input_map(self):
-        # TODO: port code from model.evaluate
-        pass
-
+        # args and kwargs are also returned for easier debugging
+        return args, kwargs, output
 
     def evaluate(self, *args, **kwargs):  
         """Applies some mathematical operation to the argument(s).
@@ -384,22 +421,24 @@ class Layer:
         """
         return self.evaluate.__doc__
 
-
-    # TODO: consider making this a property, if no args end up being necessary
-    def as_tensorflow_layer(self):
+    def as_tensorflow_layer(self, **kwargs):
         """Build an equivalent TensorFlow layer.
 
-        TODO: How would this fit into the arbitrary input/output scheme that
-              .evaluate() uses for scipy optimization? Maybe it can't, since
-              Tensorflow already has its own way of managing the data flow.
+        Builds a subclass of NemsKerasLayer and returns an instance from:
+        `SubClass(self, **kwargs)`.
 
-        TODO: should layers be instantiated at this point, or just return
-              the layer class? (probably with some frozen kwargs). Depends
-              on how the higher-level model builder is formated.
+        Parameters
+        ----------
+        kwargs : dict
+            Keyword arguments for `NemsKerasLayer` or `tf.keras.layers.Layer`.
 
         Returns
         -------
         tf.keras.layers.Layer
+
+        See also
+        --------
+        nems.tf.layer_tools.NemsKerasLayer
 
         Notes
         -----
@@ -803,6 +842,9 @@ class Layer:
               iterate over parameters, refer iterators directly to
               `Layer.parameters`.
               E.x: `for p in Layer.parameters` instead of `for p in Layer`.
+
+        TODO: This feels kludgy and I don't like it, but it allows for some
+              nice syntax for navigating Models.
         
         """
         return iter([self])
@@ -810,8 +852,8 @@ class Layer:
     def __str__(self):
         header, equal_break = self._repr_helper()
         string = header + equal_break + "\n"
-        if self.state_name is not None:
-            string += f".state_name:  {self.state_name}\n"
+        if self.state_arg is not None:
+            string += f".state_arg:  {self.state_arg}\n"
         string += ".parameters:\n\n"
         p_string = str(self.parameters)
         string += p_string

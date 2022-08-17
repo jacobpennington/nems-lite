@@ -94,10 +94,10 @@ def _nested_update(d, u):
     return d
 
 
-def plot_model(model, input, target=None, n=None, select_layers=None,
-               n_columns=1, show_titles=True, figure_kwargs=None,
-               sampling_rate=None, time_axis='x', conversion_factor=1,
-               decimals=2,  **eval_kwargs):
+def plot_model(model, input, target=None, target_name=None, n=None,
+               select_layers=None, n_columns=1, show_titles=True,
+               figure_kwargs=None, sampling_rate=None, time_axis='x',
+               conversion_factor=1, decimals=2,  **eval_kwargs):
     """Plot result of `Layer.evaluate` for each Layer in a Model.
     
     Aliased as `Model.plot_output()`.
@@ -193,31 +193,15 @@ def plot_model(model, input, target=None, n=None, select_layers=None,
         # Only one subfigure
         subfigs = np.array([subfigs])
 
-    # Evaluate the model with `save_layer_outputs=True` to make sure all
-    # intermediate Layer outputs are stored.
-    data = model.evaluate(input, save_layer_outputs=True, **eval_kwargs)
-    layer_outputs = data['_layer_outputs']
-
-    # Re-order layer outputs so that each index of `outputs` is a list
-    # containing all of the outputs from one layer, while keeping the output
-    # lists in Layer-order.
-    outputs = []
-    for i, layer in enumerate(layers):
-        outputs.append([])
-        for k, v in layer_outputs.items():
-            if k.startswith(layer.name):
-                outputs[i].append(v)
-
-    # Generate the plot for each layer
-    iter_zip = zip(outputs, layers, subfigs.flatten())
-    for i, (output, layer, subfig) in enumerate(iter_zip):
+    layer_info = model.generate_layer_data(input, **eval_kwargs)
+    iterator = enumerate(zip(layers, subfigs, layer_info))
+    for i, (layer, subfig, (info, _)) in iterator:
+        output = info['out']
         layer.plot(output, fig=subfig, **layer.plot_kwargs)
         if show_titles:
             # Make room for titles
             subfig.subplots_adjust(top=0.8)
             name = layer.name
-            if name is None:
-                name = layer.default_name
             subfig.suptitle(f'({model.get_layer_index(name)}) {name}')
         if n_columns > 1:
             # For multiple columns, shrink width of axes a bit to make room for
@@ -242,11 +226,15 @@ def plot_model(model, input, target=None, n=None, select_layers=None,
 
     # Add plot of target if given, on last axis of last subfig.
     last_ax = subfig.axes[-1]
+    if target_name is not None:
+        target = input[target_name]
+    else:
+        target_name = 'Target'
     if target is not None:
         if not isinstance(target, list):
             target = [target]
         for i, y in enumerate(target):
-            last_ax.plot(y, label=f'Target {i}')
+            last_ax.plot(y, label=f'{target_name} {i}')
         last_ax.legend(**_DEFAULT_PLOT_OPTIONS['legend_kwargs'])
         last_ax.autoscale()
 

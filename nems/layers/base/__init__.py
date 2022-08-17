@@ -10,4 +10,5 @@ Parameter : Low-level representation of individual parameters.
 from .layer import Layer
 from .phi import Phi
 from .parameter import Parameter
-from .map import LayerMap
+from .map import DataMap
+from .errors import ShapeError

@@ -264,11 +264,8 @@ class Phi:
             parameter_keys = list(self._dict.keys())
         for pk in parameter_keys:
             p = self._dict[pk]
-            if p.is_frozen:
-                # Already frozen, nothing to do
-                pass
-            else:
-                p.freeze()
+            if not p.is_frozen:
+                p.freeze()            
         self._update_vector_mask()
 
     def unfreeze_parameters(self, *parameter_keys):
@@ -293,10 +290,7 @@ class Phi:
             parameter_keys = list(self._dict.keys())
         for pk in parameter_keys:
             p = self._dict[pk]
-            if not p.is_frozen:
-                # Already unfrozen, nothing to do
-                pass
-            else:
+            if p.is_frozen:
                 p.unfreeze()
         self._update_vector_mask()
 
