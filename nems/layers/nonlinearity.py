@@ -302,7 +302,7 @@ class RectifiedLinear(StaticNonlinearity):
 
         class RectifiedLinearTF(NemsKerasLayer):
             def call(self, inputs):
-                return self.offset + self.gain * tf.nn.relu(inputs - self.shift)
+                return self.offset + self.gain * tf.nn.relu(inputs + self.shift)
 
         return RectifiedLinearTF(self, **kwargs)
 
