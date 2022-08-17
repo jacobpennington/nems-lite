@@ -198,6 +198,20 @@ class DoubleExponential(StaticNonlinearity):
         
         return DoubleExponential(shape=shape)
 
+    def as_tensorflow_layer(self, **kwargs):
+        """TODO: docs"""
+        import tensorflow as tf
+        from nems.tf import NemsKerasLayer
+
+        class DoubleExponentialTF(NemsKerasLayer):
+            def call(self, inputs):
+                exp = tf.math.exp(-tf.math.exp(
+                    -tf.math.exp(self.kappa) * (inputs - self.shift)
+                    ))
+                return self.base + self.amplitude * exp
+
+        return DoubleExponentialTF(self, **kwargs)
+
 
 class RectifiedLinear(StaticNonlinearity):
     """TODO: doc here? maybe just copy .evaluate?"""
