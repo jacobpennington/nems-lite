@@ -129,7 +129,8 @@ class FiniteImpulseResponse(Layer):
 
         return coefficients
 
-    def _unshape_coefficients(self, coefficients):
+    @staticmethod
+    def _unshape_coefficients(coefficients, shape):
         """Revert re-formatted `coefficients` to their original shape."""
         # Reverse the axis flips
         flipped_axes = [1]
@@ -140,7 +141,7 @@ class FiniteImpulseResponse(Layer):
         coefficients = np.flip(coefficients, axis=flipped_axes)
 
         # Remove dummy filter axis if not originally present
-        coefficients = np.reshape(coefficients, self.coefficients.shape)
+        coefficients = np.reshape(coefficients, shape)
 
         return coefficients
 
@@ -201,6 +202,7 @@ class FiniteImpulseResponse(Layer):
                 "FIR TF implementation currently only works for 2D data."
                 )
         fir = self  # so that this can be referenced inside class definition
+        new_values = {'coefficients': new_c}  # override Parameter.values
 
         num_gpus = len(tf.config.list_physical_devices('GPU'))
         if num_gpus == 0:
@@ -253,31 +255,16 @@ class FiniteImpulseResponse(Layer):
 
 
         class FiniteImpulseResponseTF(NemsKerasLayer):
-            def __init__(self, nems_layer, regularizer=None, *args, **kwargs):
-                super().__init__(
-                    nems_layer, regularizer=regularizer, *args, **kwargs
-                    )
-                init = tf.constant_initializer(new_c)
-                constraint = Bounds(old_c.bounds[0], old_c.bounds[1])
-                self.coefficients = self.add_weight(
-                    shape=new_c.shape, initializer=init, trainable=True,
-                    regularizer=regularizer, name='coefficients',
-                    constraint=constraint
-                    )
-
             def weights_to_values(self):
                 c = self.parameter_values['coefficients']
                 unflipped = np.flip(c, axis=0)  # Undo flip time
-                # TODO: maybe not good form to have this depend on
-                #       the method of a python object? But it should never
-                #       be called during graph execution so I think it's okay.
-                #       If it ends up being an issue, can move code here.
-                return {'coefficients': fir._unshape_coefficients(unflipped)}
+                unshaped = fir._unshape_coefficients(unflipped, old_c.shape)
+                return {'coefficients': unshaped}
 
             def call(self, inputs):
                 return call_fn(self, inputs)
 
-        return FiniteImpulseResponseTF(self, **kwargs)
+        return FiniteImpulseResponseTF(self, new_values=new_values, **kwargs)
 
 
 # Aliases, STRF specifically for full-rank (but not enforced)
