@@ -295,6 +295,17 @@ class RectifiedLinear(StaticNonlinearity):
 
         return relu
 
+    def as_tensorflow_layer(self, **kwargs):
+        """TODO: docs"""
+        import tensorflow as tf
+        from nems.tf import NemsKerasLayer
+
+        class RectifiedLinearTF(NemsKerasLayer):
+            def call(self, inputs):
+                return self.offset + self.gain * tf.nn.relu(inputs - self.shift)
+
+        return RectifiedLinearTF(self, **kwargs)
+
 # Optional alias
 class ReLU(RectifiedLinear):
     pass
