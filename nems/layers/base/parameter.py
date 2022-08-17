@@ -296,7 +296,10 @@ class Parameter:
         string += dash_break
         string += f".prior:     {self.prior}\n"
         string += f".bounds:    {self.bounds}\n"
-        string += f".is_frozen: {self.is_frozen}\n"
+        if self.is_permanent:
+            string += ".is_permanent: True\n"
+        else:
+            string += f".is_frozen: {self.is_frozen}\n"
         string += ".values:\n"
         string += f"{self.values}\n"
         string += dash_break

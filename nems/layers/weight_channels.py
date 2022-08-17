@@ -291,6 +291,9 @@ class GaussianWeightChannels(WeightChannels):
                 # TODO: docs. Explain (at least briefly) why this is the same thing.
 
                 # TODO: convert to tensordot
+
+                # TODO: the shapes aren't lining up right for new syntax,
+                #       WIP
                 mean = tf.expand_dims(self.mean, -1)
                 sd = tf.expand_dims(self.sd/10, -1)
                 input_features = tf.cast(tf.shape(inputs)[-1], dtype='float32')
