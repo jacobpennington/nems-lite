@@ -195,7 +195,7 @@ def plot_model(model, input, target=None, target_name=None, n=None,
 
     layer_info = model.generate_layer_data(input, **eval_kwargs)
     iterator = enumerate(zip(layers, subfigs, layer_info))
-    for i, (layer, subfig, (info, _)) in iterator:
+    for i, (layer, subfig, info) in iterator:
         output = info['out']
         layer.plot(output, fig=subfig, **layer.plot_kwargs)
         if show_titles:
@@ -263,13 +263,18 @@ def plot_layer(output, fig=None, **plot_kwargs):
     .plot_model
 
     """
-    if not isinstance(output, list):
-        output = [output]
     if fig is None:
         fig = plt.figure()
     ax = fig.subplots(1,1)
-    plot_data = np.concatenate(output, axis=1)
-    ax.plot(plot_data, **plot_kwargs)
+
+    all_outputs = [output[...,i] for i in range(output.shape[-1])]
+    if all_outputs[0].ndim > 2:
+        # TODO: Do something more useful here.
+        print("Too many dimensions to plot")
+        return fig
+    else:
+        for output in all_outputs:
+            ax.plot(output, **plot_kwargs)
 
     return fig
 

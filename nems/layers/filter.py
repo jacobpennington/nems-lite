@@ -81,22 +81,17 @@ class FiniteImpulseResponse(Layer):
             coefficients.shape = WeightChannels.shape
         
         """
-        # .values is needed in this case since we have to use `np.swapaxes`,
-        # which is not supported through ufunc.
         return self.parameters['coefficients'].values
 
     def evaluate(self, input):
-        """Convolve `FIR.coefficients` with input.
-        
-        TODO: need to do more testing for dim > 2 case, but this at least
-              doesn't break dim = 2 (i.e. still matches old code output) and
-              works with multiple filters.
-        
-        """
+        """Convolve `FIR.coefficients` with input."""
+        # Add axis for n output channels to input if one doesn't exist.
+        if input.ndim < 3:
+            input = input[..., np.newaxis]
         # Flip rank, any other dimensions except time & number of outputs.
         coefficients = self._reshape_coefficients()
         n_filters = coefficients.shape[-1]
-        padding = self._get_filter_padding()
+        padding = self._get_filter_padding(coefficients)
         # Prepend zeros.
         input_with_padding = np.concatenate([padding, input])
 
@@ -117,9 +112,8 @@ class FiniteImpulseResponse(Layer):
 
     def _reshape_coefficients(self):
         """Get `coefficients` in the format needed for `evaluate`."""
-        other_dims = self.shape[2:-1]
         coefficients = self.coefficients
-        if len(self.shape) == 2:
+        if coefficients.ndim == 2:
             # Add a dummy filter/output axis
             coefficients = coefficients[..., np.newaxis]
 
@@ -127,6 +121,7 @@ class FiniteImpulseResponse(Layer):
         # they are specified (filter), so have to flip all dimensions except
         # time and number of filters/outputs.
         flipped_axes = [1]  # Always flip rank
+        other_dims = coefficients.shape[2:-1]
         for i, d in enumerate(other_dims):
             # Also flip any additional dimensions
             flipped_axes.append(i+2)
@@ -149,13 +144,16 @@ class FiniteImpulseResponse(Layer):
 
         return coefficients
 
-    def _get_filter_padding(self):
+    def _get_filter_padding(self, coefficients):
         """Get zeros of correct shape to prepend to input on time axis."""
-        filter_length, n_channels = self.shape[:2]
-        other_dims = self.shape[2:]
+        filter_length, n_channels = coefficients.shape[:2]
+        other_dims = coefficients.shape[2:-1]
+        n_outputs = coefficients.shape[-1]
         # Pad zeros to handle boundary effects.
         # TODO: Is there a better way to handle this?
-        padding = np.zeros(shape=((filter_length-1, n_channels) + other_dims))
+        padding = np.zeros(
+            shape=((filter_length-1, n_channels) + other_dims + (n_outputs,))
+            )
 
         return padding
 
