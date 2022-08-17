@@ -40,7 +40,7 @@ class StaticNonlinearity(Layer):
             #       but need to add option to make this more general.
             # If there's a `shift` parameter for the subclassed nonlinearity,
             # still apply that. Otherwise, pass through inputs.
-            output = [inputs + self.parameters.get('shift', 0)]
+            output = [inputs + self.parameters.get('shift', 0).values]
         return output
 
     def nonlinearity(self, *inputs):
