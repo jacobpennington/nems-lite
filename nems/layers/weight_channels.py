@@ -188,18 +188,15 @@ class GaussianWeightChannels(WeightChannels):
 
     def initial_parameters(self):
         """Get initial values for `GaussianWeightChannels.parameters`.
-        
-        # TODO: Currently this assumes 2D shape, we should refactor to support
-        # higher-dimensional weights.
 
         Layer parameters
         ----------------
         mean : scalar or ndarray
-            Mean of gaussian, shape is (N_outputs,).
+            Mean of gaussian, shape is `self.shape[1:]`.
             Prior:  TODO  # Currently using defaults
             Bounds: (0, 1)
         sd : scalar or ndarray
-            Standard deviation of gaussian, shape is (N_outputs,).
+            Standard deviation of gaussian, shape is `self.shape[1:]`.
             Prior:  TODO  # Currently using defaults
             Bounds: (0*, np.inf)
             * Actually set to machine epsilon to avoid division by zero.
@@ -212,21 +209,26 @@ class GaussianWeightChannels(WeightChannels):
 
         mean_bounds = (0, 1)
         sd_bounds = (0, np.inf)
-        
-        _, n_output_channels = self.shape
-        shape = (n_output_channels,)
+
+        rank = self.shape[1]
+        other_dims = self.shape[2:]
+        shape = (rank,) + other_dims
         # Pick means so that the centers of the gaussians are spread across the 
         # available frequencies.
-        channels = np.arange(n_output_channels + 1)[1:]
-        tiled_means = channels / (n_output_channels*2 + 2) + 0.25
+        channels = np.arange(rank + 1)[1:]
+        tiled_means = channels / (rank*2 + 2) + 0.25
+        for dim in other_dims:
+            # Repeat tiled gaussian structure for other dimensions.
+            tiled_means = tiled_means[...,np.newaxis].repeat(dim, axis=-1)
+
         mean_prior = Normal(tiled_means, np.full_like(tiled_means, 0.2))
         sd_prior = HalfNormal(np.full_like(tiled_means, 0.4))
             
         parameters = Phi(
             Parameter(name='mean', shape=shape, bounds=mean_bounds,
-                      prior=mean_prior),
+                        prior=mean_prior),
             Parameter(name='sd', shape=shape, bounds=sd_bounds,
-                      prior=sd_prior, zero_to_epsilon=True)
+                        prior=sd_prior, zero_to_epsilon=True)
             )
 
         return parameters
@@ -236,20 +238,20 @@ class GaussianWeightChannels(WeightChannels):
         """Return N discrete gaussians with T bins, where `shape=(T,N)`."""
         mean = self.parameters['mean'].values
         sd = self.parameters['sd'].values
-        n_input_channels, _ = self.shape
+        n_input_channels = self.shape[0]
 
         x = np.arange(n_input_channels)/n_input_channels
         mean = np.asanyarray(mean)[..., np.newaxis]
         sd = np.asanyarray(sd)[..., np.newaxis]
-        coefficients = np.exp(-0.5*((x-mean)/sd)**2).T
-
+        coefficients = np.exp(-0.5*((x-mean)/sd)**2)  # (rank, ..., outputs, T)
+        reordered = np.moveaxis(coefficients, -1, 0)  # (T, rank, ..., outputs)
         # Normalize by the cumulative sum for each channel
-        cumulative_sum = np.sum(coefficients, axis=1, keepdims=True)
+        cumulative_sum = np.sum(reordered, axis=1, keepdims=True)
         # If all coefficients for a channel are 0, skip normalization
         cumulative_sum[cumulative_sum == 0] = 1
-        coefficients /= cumulative_sum
+        normalized = reordered/cumulative_sum
 
-        return coefficients
+        return normalized
 
     def as_tensorflow_layer(self, **kwargs):
         """TODO: docs"""
