@@ -19,6 +19,7 @@ class Model:
     # in `Model.from_json`. Be sure to update that method if these change.
     default_input = 'input'
     default_output = 'output'
+    default_target = 'target'
     default_state = 'state'
     default_backend = 'scipy'
 
@@ -229,7 +230,9 @@ class Model:
             #       I guess we'd want them to just copy the existing parameters
             #       S times, temporarily, though it's not clear how to use that
             #       extra dimension. A for loop always works but that will be slow.
+            #
             #       Maybe some version of np.apply could work?
+            #       i.e. apply Layer._evaluate along first axis
 
 
             batch_counts = [len(v) for _, v in batched_data.items()]
@@ -672,7 +675,7 @@ class Model:
 
         """
 
-        # Must specify either target or target_name
+        if target_name is None: target_name = self.default_target
         if target is None: target = input[target_name]
         # TODO: maybe set Model.default_fitter_options for this instead?
         if fitter_options is None: fitter_options = {}
@@ -680,21 +683,6 @@ class Model:
         if isinstance(cost_function, str):
             # Convert string reference to metric function
             cost_function = get_metric(cost_function)
-
-        # Set data-ordering prior to fitting so that those operations are
-        # not repeated for each evaluation.
-        data = self._initialize_data(
-            input, undo_reorder=undo_reorder, 
-            use_existing_maps=use_existing_maps,
-            **eval_kwargs
-            )
-        if not undo_reorder:
-            # Reset these to default values, otherwise arrays will
-            # be improperly reordered if these kwargs had non-default values.
-            _ = eval_kwargs.pop('time_axis', None)
-            _ = eval_kwargs.pop('channel_axis', None)
-
-
         # TODO: prediction & target currently assumed to be arrays, but they can
         #       also be lists. Need to do some extra checks to align those
         #       correctly for the cost function. Only working so far by accident,
@@ -704,9 +692,47 @@ class Model:
         #       and take the average? (allows different lengths)
         #       Concatenate and compute all at once? (all same lengths)
         #       Other? (e.g. multiple predicts vs one target, take average)
+        #
+        #       wish list:  matching lists (compare, add/average on concat.)
+        #                   matching arrays
+        #                   one array -> list
+        #                   list -> one array
+        #                   (roughly in order of priority)
+        #       *also think about best way to compare cost for multiple neurons etc
+
+        # TODO: Move this (and TF backend) to separate modules. Plan for now
+        #       would be a 'backends' package, and move 'tf' package there
+        #       along with a new 'scipy' package. Inside those, can have
+        #       'fit_nems_model' or something that implements these details.
+        #       Then set it up so we don't need to ad a new if statement for
+        #       every new backend, just have something along the lines of
+        #       _lookup_backend('tf') and enforce a stereotyped structure with
+        #       the same name in all backends for the `fit_nems_model` routine.
         if backend == 'scipy':
-            # TODO: probably move this to a subroutine? will decide after
-            #       sketching out more
+            # TODO: (discuss this with SVD)
+            # This won't work correctly with batch formatting b/c time_axis
+            # and channel_axis defaults should be 1, 2 instead of 0, 1.
+            # Need to do something similar to
+            # what TF backend does, but only if batch dimension is present.
+            # Alternatively, we can state that data should *always* have a 
+            # samples/trials dimension similar to TF, and/or maybe prepend a
+            # singleton axis if some kwarg isn't specified.
+                # Remove first dimension of data before passing to `Model.evaluate`.
+                # input = {k: v[0, ...] for k, v in input.items()}
+
+            # Set data-ordering prior to fitting so that those operations are
+            # not repeated for each evaluation. 
+            data = self._initialize_data(
+                input, undo_reorder=undo_reorder, 
+                use_existing_maps=use_existing_maps,
+                **eval_kwargs
+                )
+            if not undo_reorder:
+                # Reset these to default values, otherwise arrays will
+                # be improperly reordered if these kwargs had non-default values.
+                _ = eval_kwargs.pop('time_axis', None)
+                _ = eval_kwargs.pop('channel_axis', None)
+
             def _scipy_cost_wrapper(_vector, _model, _input, _target,
                                     _cost_function, _eval_kwargs):
                 _model.set_parameter_vector(_vector, ignore_checks=True)
@@ -744,9 +770,64 @@ class Model:
             self.set_parameter_vector(improved_parameters)
 
         elif (backend == 'tf') or (backend == 'tensorflow'):
-            # TODO: similar to scipy, last step should set new model parameters
-            #       in-place
-            raise NotImplementedError
+            import tensorflow.keras as keras
+            from nems.tf import build_model
+
+            # NOTE: expects arrays in data to already be formatted as shape
+            #       (S,T,C) instead of (T,C), same for target as well.
+
+            # Remove first dimension of data before passing to `Model.evaluate`,
+            # since we only need to fit one batch/sample to set the appropriate
+            # DataMaps.
+            # TODO: this is pretty kludgy, clean this up. Also wont' work
+            #       for array inputs
+            input2 = {k: v[0, ...] for k, v in input.items()}
+            data2 = self.evaluate(
+                input2, undo_reorder=False, use_existing_maps=False,
+                **eval_kwargs
+                )
+            # Get data mapping of inputs & outputs for each Layer.
+            data_maps = self.get_data_maps()
+
+            # Build TF model
+            # TODO: make this a separate method so that models can be compared
+            #       w/o fitting.
+            tf_kwargs = {}  # TODO
+            tf_layers = [layer.as_tensorflow_layer(**tf_kwargs)
+                         for layer in self.layers]
+            input.pop(target_name, None)
+            tf_model = build_model(
+                data_maps, tf_layers, input, batch_size=None, name=self.name
+                )
+
+            print('TF model built...')
+            print(tf_model.summary())
+            # TODO: This assumes a single output (like our usual models).
+            #       Need to tweak this to be able to fit outputs from multiple
+            #       layers.
+            final_layer = self.layers[-1].name
+            tf_model.compile(
+                optimizer=keras.optimizers.Adam(),
+                loss={final_layer: keras.losses.MeanSquaredError()}
+            )
+
+            tf_model.fit(
+                input, {final_layer: target}
+            )
+
+            # Save weights back to NEMS model
+            # (first two TF layers are input layers, skip it).
+            # TODO: This assumes there aren't any other extra layers added
+            #       by TF. That might not be the case for some model types.
+            skip = len(tf_model.inputs)
+            for nems_layer, tf_layer in zip(self.layers, tf_model.layers[skip:]):
+                nems_layer.set_parameter_values(tf_layer.weights_to_values())
+
+            # TODO: more information here.
+            print('TF model fit finished, parameters have been updated.')
+
+            return tf_model
+            
 
     def score(self, prediction, target):
         # TODO: this should point to an independent utility function, but

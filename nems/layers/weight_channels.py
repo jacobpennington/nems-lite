@@ -73,7 +73,7 @@ class WeightChannels(Layer):
             coefficients.shape = WeightChannels.shape
         
         """
-        return self.parameters['coefficients']
+        return self.parameters['coefficients'].values
 
     def evaluate(self, input):
         """Multiply input(s) by WeightChannels.coefficients.
@@ -91,47 +91,20 @@ class WeightChannels(Layer):
             Length of list matches number of inputs.
         
         """
-        # TODO: this won't use DxDxD shape as intended. Could do a for loop
-        #       for last dimension (if dim >2) similar to FIR, but that would
-        #       probable be slow. Could also take product of last N dimensions
-        #       (similar to old FIR)
-        #       - from numpy matmul docs:
-        #         "If either argument is N-D, N > 2, it is treated as a stack
-        #          of matrices residing in the last two indexes and broadcast
-        #          accordingly."
-        #       - Maybe this could solve the problem if we reshape coefficients
-        #         accordingly? Ex: (not working so far)
-        # if len(self.shape) > 2:
-        #     # (time, chans, ...) -> (..., time, chans)
-        #     c = np.moveaxis(self.coefficients.values, [0, 1], [-2, -1])
-        # else:
-        #     c = self.coefficients
-        
+
         try:
-            output = input @ self.coefficients
+            output = np.tensordot(input, self.coefficients, axes=(1, 0))
         except ValueError as e:
             # Check for dimension swap, to give more informative error message.
-            if 'mismatch in its core dimension' in str(e):
+            #if 'mismatch in its core dimension' in str(e):  # for @
+            if 'shape-mismatch for sum' in str(e):
                 raise ShapeError(self, input=input.shape,
                                  coefficients=self.coefficients.shape)
             else:
                 # Otherwise let the original error through.
                 raise e
+
         return output
-
-    def as_tensorflow_layer(self):
-        """TODO: docs"""
-        import tensorflow as tf
-        from nems.tf import get_tf_class
-
-        def call(self, inputs):
-            # TODO: docs, explain (at least briefly) why this is the same thing.
-            return tf.nn.conv1d(
-                inputs, tf.expand_dims(self.coefficients, 0), stride=1,
-                padding='SAME'
-                )
-        
-        return get_tf_class(self, call=call)
 
     @layer('wc')
     def from_keyword(keyword):
@@ -164,6 +137,19 @@ class WeightChannels(Layer):
         wc = wc_class(**kwargs)
 
         return wc
+
+    def as_tensorflow_layer(self, **kwargs):
+        """TODO: docs"""
+        import tensorflow as tf
+        from nems.tf import NemsKerasLayer
+
+        class WeightChannelsTF(NemsKerasLayer):
+            @tf.function
+            def call(self, inputs):
+                out = tf.tensordot(inputs, self.coefficients, axes=[[2], [0]])
+                return out
+        
+        return WeightChannelsTF(self, **kwargs)
 
     @property
     def plot_kwargs(self):
@@ -265,37 +251,40 @@ class GaussianWeightChannels(WeightChannels):
 
         return coefficients
 
-    def as_tensorflow_layer(self):
+    def as_tensorflow_layer(self, **kwargs):
         """TODO: docs"""
         import tensorflow as tf
-        from nems.tf import get_tf_class
-
-        def call(self, inputs):
-            # TODO: docs. Explain (at least briefly) why this is the same thing.
-            input_features = tf.cast(tf.shape(inputs)[-1], dtype='float32')
-            temp = tf.range(input_features) / input_features
-            temp = (tf.reshape(temp, [1, input_features, 1]) - self.mean) / (self.sd/10)
-            temp = tf.math.exp(-0.5 * tf.math.square(temp))
-            kernel = temp / tf.math.reduce_sum(temp, axis=1)
-
-            return tf.nn.conv1d(inputs, kernel, stride=1, padding='SAME')
-        
-        def weights_to_values(self):
-            values = self.parameter_values
-            values['sd'] = values['sd']/10  # undo kludge mentioned below
-            return values
+        from nems.tf import NemsKerasLayer
 
         # TODO: Ask SVD about this kludge in old NEMS code. Is this still needed?
         # If so, explain: I think this was to keep gradient from "blowing up"?
         # Scale up sd bound
         sd_lower, sd_upper = self.parameters['sd'].bounds
+        sd = self.get_parameter_values('sd')
         self.parameters['sd'].bounds = (sd_lower, sd_upper*10)
-        tf_class = get_tf_class(
-            self, call=call, weights_to_values=weights_to_values
-            )
-        # Reset sd bound
-        self.parameters['sd'].bounds = (sd_lower, sd_upper)
-        # TODO: this also means the parameter value for sd will need to be
-        #       scaled down when retrieving from tf
+        self.set_parameter_values(sd=sd*10)
 
-        return tf_class
+        class GaussianWeightChannelsTF(NemsKerasLayer):
+            def call(self, inputs):
+                # TODO: docs. Explain (at least briefly) why this is the same thing.
+
+                # TODO: convert to tensordot
+
+                input_features = tf.cast(tf.shape(inputs)[-1], dtype='float32')
+                temp = tf.range(input_features) / input_features
+                temp = (tf.reshape(temp, [1, input_features, 1]) - self.mean) / (self.sd/10)
+                temp = tf.math.exp(-0.5 * tf.math.square(temp))
+                kernel = temp / tf.math.reduce_sum(temp, axis=1)
+
+                return tf.nn.conv1d(inputs, kernel, stride=1, padding='SAME')
+            
+            def weights_to_values(self):
+                values = self.parameter_values
+                values['sd'] = values['sd']/10  # undo kludge mentioned below
+                return values
+
+        # Reset sd and upper bound
+        self.parameters['sd'].bounds = (sd_lower, sd_upper)
+        self.set_parameter_values(sd=sd)
+
+        return GaussianWeightChannelsTF(self, **kwargs)

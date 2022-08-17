@@ -3,12 +3,12 @@ import tensorflow as tf
 from tensorflow.keras import Input
 
 
-def build_model(nems_model, tf_layers, input, batch_size=None, eval_kwargs=None):
+def build_model(data_maps, tf_layers, input, batch_size=None, name=None):
     """Docs TODO
     
     Parameters
     ----------
-    nems_model : nems.layers.base.Model
+    data_maps : dict of nems.layers.base.DataMap
     tf_layers : list of tf.keras.layers.Layer
     input : dict of ndarray
         Same as `Model.evaluate`, with some exceptions:
@@ -18,21 +18,14 @@ def build_model(nems_model, tf_layers, input, batch_size=None, eval_kwargs=None)
                18-channel spectrogram consisting of 10 trials of 1000 time bins.
     
     """
+
     tf_input_dict = {}
     for k, v in input.items():
         # Skip trial/sample dimension when determining shape.
         tf_in = Input(shape=v.shape[1:], name=k, batch_size=batch_size,
                       dtype='float32')  # TODO: why hard-code float32?
         tf_input_dict[k] = tf_in
-
-    # Get data mapping of inputs & outputs for each Layer.
-    # Remove first dimension of data before passing to `Model.evaluate`.
-    # `data_map` should be the same for all batches, so we only need to evaluate
-    # one batch.
-    input = {k: v[0, ...] for k, v in input.items()}
-    eval_kwargs = {} if eval_kwargs is None else eval_kwargs
-    _ = nems_model.evaluate(input, **eval_kwargs)
-    data_maps = nems_model.get_data_maps()
+    unused_inputs = list(tf_input_dict.keys())
 
     last_output = None
     tf_data = tf_input_dict.copy()  # Need to keep actual Inputs separate
@@ -52,27 +45,28 @@ def build_model(nems_model, tf_layers, input, batch_size=None, eval_kwargs=None)
             else:
                 # Add Input with matching key
                 layer_inputs.append(tf_data[k])
+            if k in unused_inputs:
+                unused_inputs.pop(unused_inputs.index(k))
 
         # TODO: need to do something with tf.keras.layers.concatenate
         #       when there are multiple inputs. Adding the [0] for now because
         #       singleton lists mess up some of the Layers.
         last_output = layer(layer_inputs[0])
         
-        # Return of call can be Tensor or list/tuple of tensor.
-        # Layers will need to account for this when defining call.
-        if not isinstance(last_output, (list, tuple)):
-            last_output = [last_output]
-        
-        tf_data.update(
-            {k: v for k, v in zip(layer_map.out, last_output)
-             if k is not None}  # indicates unsaved intermediate output
-            )
+        if isinstance(last_output, (list, tuple)):
+            tf_data.update(
+                {k: v for k, v in zip(layer_map.out, last_output)
+                if k is not None}  # indicates unsaved intermediate output
+                )
+        elif layer_map.out[0] is not None:
+            tf_data[layer_map.out[0]] = last_output
 
-    tf_inputs = list(tf_input_dict.values())
+    # Don't include inputs that were never actually passed to any Layers.
+    tf_inputs = [v for k, v in tf_input_dict.items() if k not in unused_inputs]
     # For outputs, get all data entries that aren't inputs
     tf_outputs = [v for k, v in tf_data.items() if k not in tf_input_dict]
 
     model = tf.keras.Model(inputs=tf_inputs, outputs=tf_outputs,
-                           name=nems_model.name)
+                           name=name)
 
     return model

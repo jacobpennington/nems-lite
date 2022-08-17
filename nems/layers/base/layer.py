@@ -421,22 +421,24 @@ class Layer:
         """
         return self.evaluate.__doc__
 
-
-    # TODO: consider making this a property, if no args end up being necessary
-    def as_tensorflow_layer(self):
+    def as_tensorflow_layer(self, **kwargs):
         """Build an equivalent TensorFlow layer.
 
-        TODO: How would this fit into the arbitrary input/output scheme that
-              .evaluate() uses for scipy optimization? Maybe it can't, since
-              Tensorflow already has its own way of managing the data flow.
+        Builds a subclass of NemsKerasLayer and returns an instance from:
+        `SubClass(self, **kwargs)`.
 
-        TODO: should layers be instantiated at this point, or just return
-              the layer class? (probably with some frozen kwargs). Depends
-              on how the higher-level model builder is formated.
+        Parameters
+        ----------
+        kwargs : dict
+            Keyword arguments for `NemsKerasLayer` or `tf.keras.layers.Layer`.
 
         Returns
         -------
         tf.keras.layers.Layer
+
+        See also
+        --------
+        nems.tf.layer_tools.NemsKerasLayer
 
         Notes
         -----

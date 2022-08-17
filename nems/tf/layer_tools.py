@@ -3,7 +3,21 @@ from tensorflow.keras.layers import Layer
 from tensorflow.keras.constraints import Constraint
 
 
-class NemsKerasLayer(tf.keras.layers.Layer):
+# TODO: handle frozen parameters
+class NemsKerasLayer(Layer):
+    
+    def __init__(self, nems_layer, regularizer=None, *args, **kwargs):
+        """TODO: docs."""
+        super().__init__(name=nems_layer.name, *args, **kwargs)
+        for p in nems_layer.parameters:
+            init = tf.constant_initializer(p.values)
+            constraint = Bounds(p.bounds[0], p.bounds[1])
+            setattr(
+                self, p.name, self.add_weight(
+                    shape=p.shape, initializer=init, trainable=True,
+                    regularizer=regularizer, name=p.name, constraint=constraint
+                    )
+                )
 
     @property
     def parameter_values(self):
@@ -15,37 +29,6 @@ class NemsKerasLayer(tf.keras.layers.Layer):
 
     def weights_to_values(self):
         return self.parameter_values
-
-
-# TODO: handle frozen parameters
-# NOTE: doing this as a factory instead of putting everything in the above
-#       class so that a reference to the nems_layer isn't needed after creating
-#       the class (unlike providing it to the initializer). But may switch to
-#       that implementation in the future if this becomes impractical.
-def get_tf_class(nems_layer, **methods):
-
-    class Layer(NemsKerasLayer):
-        def __init__(self, regularizer=None, *args, **kwargs):
-            super().__init__(name=nems_layer.name, *args, **kwargs)
-            add_existing_weights(nems_layer, self, regularizer)
-
-    Layer.__name__ = f'{type(nems_layer).__name__}TF'
-    for method_name, method_def in methods.items():
-        setattr(Layer, method_name, method_def)
-
-    return Layer
-
-
-def add_existing_weights(nems_layer, tf_layer, regularizer=None):
-    for p in nems_layer.parameters:
-        init = tf.constant_initializer(p.values)
-        constraint = Bounds(p.bounds[0], p.bounds[1])
-        setattr(
-            tf_layer, p.name, tf_layer.add_weight(
-                shape=p.shape, initializer=init, trainable=True,
-                regularizer=regularizer, name=p.name
-                )
-            )
 
 
 class Bounds(Constraint):

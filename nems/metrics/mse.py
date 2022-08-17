@@ -1,5 +1,10 @@
 import numpy as np
 
+
+# TODO: Need to have normalization in-place for multi-neuron data
+#       (or multi-batch?), otherwise some components will get weighted
+#       more heavily. Should be a pre-processing step.
+
 # TODO: I don't love having different argument names for mse vs nmse, but I
 #       wanted to make it clear that the ordering doesn't matter for the former
 #       (and does for the latter). Similar for other modules in this directory.
