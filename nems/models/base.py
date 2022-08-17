@@ -255,8 +255,10 @@ class Model:
         current_args.pop('self')
         data_generator = self.generate_layer_data(**current_args)
         if n is not None: n -= 1
+        else: n = len(self.layers)-1
+        # Get data for the final layer only, to reduce memory use.
         layer_data = self.get_layer_data(data_generator, n, n)[-1]
-        
+
         if not return_full_data:
             data = layer_data['out']  # output of final Layer._evaluate
         else:

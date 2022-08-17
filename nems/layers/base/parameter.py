@@ -136,7 +136,7 @@ class Parameter:
             self.is_frozen = False
 
     def make_permanent(self):
-        """Set parameter to a fixed value, and do not unfreeze."""
+        """Set parameter to a fixed value. Do not unfreeze or resample."""
         self.freeze()
         self.is_permanent = True
 
@@ -179,7 +179,12 @@ class Parameter:
 
         sample = self.prior.sample(n=n, bounds=self.bounds)
         if inplace:
-            self.update(sample)
+            if self.is_permanent:
+                # TODO: switch this to log.debug? or do something else maybe,
+                #       instead of silently skipping.
+                pass
+            else:
+                self.update(sample)
         return sample
 
     def mean(self, inplace=False):
@@ -203,7 +208,12 @@ class Parameter:
         """
         mean = self.prior.mean()
         if inplace:
-            self.update(mean)
+            if self.is_permanent:
+                # TODO: switch this to log.debug? or do something else maybe,
+                #       instead of silently skipping.
+                pass
+            else:
+                self.update(mean)
 
         return mean
 
@@ -296,7 +306,10 @@ class Parameter:
         string += dash_break
         string += f".prior:     {self.prior}\n"
         string += f".bounds:    {self.bounds}\n"
-        string += f".is_frozen: {self.is_frozen}\n"
+        if self.is_permanent:
+            string += ".is_permanent: True\n"
+        else:
+            string += f".is_frozen: {self.is_frozen}\n"
         string += ".values:\n"
         string += f"{self.values}\n"
         string += dash_break
