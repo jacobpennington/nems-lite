@@ -213,14 +213,17 @@ class FiniteImpulseResponse(Layer):
                 new_coefs = tf.expand_dims(
                     tf.transpose(self.coefficients, [2, 0, 1]), -1
                     )  
+                # This will add an extra dim if there is no output dimension.
+                input_width = tf.shape(inputs)[1]
+                rank_4 = tf.reshape(inputs, [-1, input_width, rank, n_outputs])
                 padded_input = tf.pad(
-                    inputs, [[0,0], [filter_width-1,0], [0,0], [0,0]]
+                    rank_4, [[0,0], [filter_width-1,0], [0,0], [0,0]]
                     )
                 # Reorder input to shape (n outputs, batch, time, rank)
                 x = tf.transpose(padded_input, [3, 0, 1, 2])
-                fn = lambda t: tf.nn.conv1d(
+                fn = lambda t: tf.cast(tf.nn.conv1d(  # TODO: don't like forcing dtype here
                     t[0], t[1], stride=1, padding='VALID'
-                    )
+                    ), tf.float64)
                 # Apply convolution for each output
                 y = tf.map_fn(
                     fn=fn,
@@ -236,8 +239,10 @@ class FiniteImpulseResponse(Layer):
             def call_fn(self, inputs):
                 # filter_width, rank, n_outputs are constants defined above.
                 input_width = tf.shape(inputs)[1]
+                # This will add an extra dim if there is no output dimension.
+                rank_4 = tf.reshape(inputs, [-1, input_width, rank, n_outputs])
                 # Reshape will group by output before rank w/o transpose.
-                transposed = tf.transpose(inputs, [0, 1, 3, 2])
+                transposed = tf.transpose(rank_4, [0, 1, 3, 2])
                 # Collapse rank and n_outputs to one dimension.
                 # -1 for batch size b/c it can be None.
                 reshaped = tf.reshape(

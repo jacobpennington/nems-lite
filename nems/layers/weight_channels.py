@@ -143,28 +143,14 @@ class WeightChannels(Layer):
         import tensorflow as tf
         from nems.tf import NemsKerasLayer
 
-        c = self.coefficients
-        c_shape = c.shape
-        # Force at least 3 dimensions for compatibility with TF version of FIR.
-        if c.ndim < 3:
-            new_values = {'coefficients': c[...,np.newaxis]}
-        else:
-            new_values = {}
-
         class WeightChannelsTF(NemsKerasLayer):
             @tf.function
             def call(self, inputs):
                 # Add an n_outputs dimension to input if one is not present.
                 out = tf.tensordot(inputs, self.coefficients, axes=[[2], [0]])
                 return out
-
-            def weights_to_values(self):
-                values = self.parameter_values
-                # Remove extra dummy axis if one was added.
-                values['coefficients'] = values['coefficients'].reshape(c_shape)
-                return values
         
-        return WeightChannelsTF(self, new_values=new_values, **kwargs)
+        return WeightChannelsTF(self, **kwargs)
 
     @property
     def plot_kwargs(self):
@@ -276,14 +262,9 @@ class GaussianWeightChannels(WeightChannels):
         # TODO: Ask SVD about this kludge in old NEMS code. Is this still needed?
         # If so, explain: I think this was to keep gradient from "blowing up"?
         # Scale up sd bound
-        sd, mean = self.get_parameter_values('sd', 'mean')
-        sd_shape = sd.shape
-        if sd.ndim < 2:
-            # Always use at least 2 dims for compatibility with TF FIR.
-            sd = sd[..., np.newaxis]
-            mean = mean[..., np.newaxis]
+        sd, = self.get_parameter_values('sd')
         sd_lower, sd_upper = self.parameters['sd'].bounds
-        new_values = {'sd': sd*10, 'mean': mean}
+        new_values = {'sd': sd*10}
         new_bounds = {'sd': (sd_lower, sd_upper*10)}
 
         class GaussianWeightChannelsTF(NemsKerasLayer):
@@ -309,8 +290,7 @@ class GaussianWeightChannels(WeightChannels):
             def weights_to_values(self):
                 values = self.parameter_values
                 # Remove extra dummy axis if one was added, and undo scaling.
-                values['sd'] = (values['sd'].reshape(sd_shape)) / 10
-                values['mean'] = values['mean'].reshape(sd_shape)
+                values['sd'] = values['sd'] / 10
                 return values
 
         # TODO
