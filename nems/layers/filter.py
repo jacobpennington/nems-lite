@@ -221,9 +221,9 @@ class FiniteImpulseResponse(Layer):
                     )
                 # Reorder input to shape (n outputs, batch, time, rank)
                 x = tf.transpose(padded_input, [3, 0, 1, 2])
-                fn = lambda t: tf.nn.conv1d(
+                fn = lambda t: tf.cast(tf.nn.conv1d(  # TODO: don't like forcing dtype here
                     t[0], t[1], stride=1, padding='VALID'
-                    )
+                    ), tf.float64)
                 # Apply convolution for each output
                 y = tf.map_fn(
                     fn=fn,
