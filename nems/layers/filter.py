@@ -190,7 +190,7 @@ class FiniteImpulseResponse(Layer):
     def as_tensorflow_layer(self, **kwargs):
         """TODO: docs"""
         import tensorflow as tf
-        from nems.tf import Bounds, NemsKerasLayer
+        from nems.backends.tf import Bounds, NemsKerasLayer
 
         old_c = self.parameters['coefficients']
         # TODO: Not clear why flipping time axis is needed, something funky with

@@ -2,5 +2,4 @@
 
 """
 
-from .model import build_model
 from .layer_tools import NemsKerasLayer, Bounds

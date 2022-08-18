@@ -3,29 +3,22 @@
 class Backend:
     """TODO: docs"""
 
-    def __init__(self, nems_model, input, fitter_options=None):
+    def __init__(self, nems_model, input, eval_kwargs=None, **backend_options):
         self.nems_model = nems_model
-        self._input = input
-        self._model = None
-        if fitter_options is None:
-            fitter_options = {}
+        if eval_kwargs is None: eval_kwargs = {}
+        self.model = self.build(
+            input, eval_kwargs=eval_kwargs, **backend_options
+            )
 
-    @property
-    def model(self):
-        """Get backend equivalent of NEMS Model."""
-        model = getattr(self, '_model', None)
-        if model is None:
-            # Build model using most recent input
-            model = self.build_model(self._input)
-
-    def build(self, input, *args, **kwargs):
+    # Must accept input data and eval_kwargs (dict of kwargs for Model.evaluate)
+    def build(self, input, eval_kwargs=None, **backend_options):
         """Return whatever object the backend uses for fitting/predicting."""
         raise NotImplementedError
-
-    def fit(self, input, *args, **kwargs):
+        
+    def fit(self, input, *args, eval_kwargs=None, **kwargs):
         """Call _model.fit() or equivalent."""
         raise NotImplementedError
 
-    def predict(self, input, *args, **kwargs):
+    def predict(self, input, *args, eval_kwargs=None, **kwargs):
         """Call _model.predict() or equivalent."""
         raise NotImplementedError

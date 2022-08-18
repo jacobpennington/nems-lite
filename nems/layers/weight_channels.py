@@ -141,7 +141,7 @@ class WeightChannels(Layer):
     def as_tensorflow_layer(self, **kwargs):
         """TODO: docs"""
         import tensorflow as tf
-        from nems.tf import NemsKerasLayer
+        from nems.backends.tf import NemsKerasLayer
 
         class WeightChannelsTF(NemsKerasLayer):
             @tf.function
@@ -257,7 +257,7 @@ class GaussianWeightChannels(WeightChannels):
     def as_tensorflow_layer(self, **kwargs):
         """TODO: docs"""
         import tensorflow as tf
-        from nems.tf import NemsKerasLayer
+        from nems.backends.tf import NemsKerasLayer
 
         # TODO: Ask SVD about this kludge in old NEMS code. Is this still needed?
         # If so, explain: I think this was to keep gradient from "blowing up"?
