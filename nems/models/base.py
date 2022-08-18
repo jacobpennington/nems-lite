@@ -808,13 +808,15 @@ class Model:
             #       Need to tweak this to be able to fit outputs from multiple
             #       layers.
             final_layer = self.layers[-1].name
+            rate = fitter_options.get('learning_rate', 0.001)
             tf_model.compile(
-                optimizer=keras.optimizers.Adam(),
+                optimizer=keras.optimizers.Adam(learning_rate=rate),
                 loss={final_layer: keras.losses.MeanSquaredError()}
             )
 
+            epochs = fitter_options.get('epochs', 1)
             tf_model.fit(
-                input, {final_layer: target}
+                input, {final_layer: target}, epochs=epochs
             )
 
             # Save weights back to NEMS model
