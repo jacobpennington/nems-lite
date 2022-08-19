@@ -126,16 +126,14 @@ class Model:
             case of a clash. I.e. if `input_name is not None`, but also
             `Layer.input is not None` for the first layer, `Layer.input` will
             be used.
-            If None : use `Layer.input` of first layer if specified,
-                      otherwise `Model.default_input`.
+            If None : use `Layer.input` of first layer if specified.
             If str  : a single input array at key `input_name`.
         state_name : str; optional.
             If str, and `state is not None`, then `state_name` will be the key
-            for `state`. Otherwise, `Model.default_state` will be used.
+            for `state`.
         output_name : str; optional.
             Specifies name(s) for array output the final layer if
             `Layer.output is None`.
-            If None : use `Model.default_output`.
             If str  : Use this name for each of the Layer's outputs
                       (incremented if multiple).
         n : int; optional.
@@ -203,15 +201,15 @@ class Model:
             sample_out = []
             for sample in samples:
                 data_generator = self.generate_layer_data(
-                    sample, no_args=True, use_existing_maps=use_existing_maps,
+                    sample, use_existing_maps=use_existing_maps,
                     skip_initialization=True
                 )
                 if n is not None: n -= 1
                 else: n = len(self.layers)-1
                 # Get data for the final layer only, to reduce memory use.
                 layer_data = self.get_layer_data(data_generator, n, n)[-1]
-                sample_out.append(layer_data['data'])
-            batch_out.append(DataSet.concatenate_sample_outputs(sample_out))
+                sample_out.append(layer_data['data'].prepend_samples())
+            batch_out.extend(sample_out)
         all_outputs = DataSet.concatenate_sample_outputs(batch_out)
         # Inputs (and any targets) should not have changed
         data.outputs = all_outputs
@@ -222,11 +220,11 @@ class Model:
         if not return_full_data:
             out = data.outputs
             if len(out) == 1:
-                out = out.values()[0]
+                out = list(out.values())[0]
         else:
             out = data.as_dict()
 
-        return data
+        return out
 
     def _evaluate_layer(self, layer, data):
         """Evaluates one Layer. Internal for `Model.generate_layer_data`.
@@ -256,7 +254,7 @@ class Model:
     # TODO: possibly move this method and any related subroutines to a separate
     #       module (inside a new `base` directory), with simple wrappers in
     #       Model as the public-facing API.
-    def generate_layer_data(self, input, copy_data=False, no_args=False,
+    def generate_layer_data(self, input, copy_data=False,
                             use_existing_maps=False, skip_initialization=False,
                             **eval_kwargs):
         """Generate input and output arrays for each Layer in Model.
@@ -274,8 +272,6 @@ class Model:
             If True, a deep copy of data will be stored in `layer_data['data']`
             after each `Layer._evaluate`. This will be very memory intensive
             for large data, and is generally not recommended.
-        no_args : bool; default=False.
-            Don't save `args` or `kwargs` (memory optimization for `evaluate`).
         use_existing_maps : bool; default=False.
             If True, existing DataMaps will be used rather than generating a
             new one for each Layer. This is disabled by default for direct
@@ -335,7 +331,7 @@ class Model:
         if not skip_initialization:
             data = DataSet(input, **eval_kwargs)
         else:
-            data in input
+            data = input
 
         max_n = len(self.layers)
         for n, layer in enumerate(self.layers):
@@ -550,10 +546,8 @@ class Model:
 
         """
 
-        if target_name is None: target_name = self.default_target
         if fitter_options is None: fitter_options = {}
         if backend_options is None: backend_options = {}
-        if backend is None: backend = self.default_backend
         if isinstance(cost_function, str):
             # Convert string reference to metric function
             cost_function = get_metric(cost_function)
@@ -869,10 +863,9 @@ class Model:
         print(self)
 
     def __str__(self):
-        header, tilde_break, attr_string = self._repr_helper()
+        header, tilde_break  = self._repr_helper()
         string = header
         string += tilde_break
-        string += attr_string
         string += ".layers:\n\n"
         # Extra equal_break above first layer, so that its heading looks the
         # same as subsequent layers.
@@ -887,7 +880,7 @@ class Model:
         return string
 
     def __repr__(self):
-        header, tilde_break, _ = self._repr_helper()
+        header, tilde_break = self._repr_helper()
         string = header
         string += tilde_break
         for i, layer in enumerate(self.layers):
@@ -905,19 +898,10 @@ class Model:
         kwargs = {}  # TODO  --  what should be here?
         args_string = ", ".join([f"{a}" for a in args])
         kwargs_string = ", ".join([f"{k}={v}" for k, v in kwargs.items()])
-        attr_string = ""
-        for attr in ['input', 'output', 'state', 'backend']:
-            default = f'default_{attr}'
-            self_attr = getattr(self, default)
-            base_attr = getattr(Model, default)
-            if self_attr != base_attr:
-                # 7 max length, add spaces to keep values aligned
-                space_gap = " "*(7-len(attr))  
-                attr_string += f".{default}:  " + space_gap + f"{self_attr}\n"
         header = f"{type(self).__name__}({args_string}{kwargs_string})\n"
         tilde_break = "~"*64 + "\n"
 
-        return header, tilde_break, attr_string
+        return header, tilde_break
 
 
     @classmethod
@@ -1174,7 +1158,7 @@ class DataSet:
         # NOTE: additional kwargs ignored for convenience, since initialize
         #       and finalize are both related to Model.evaluate.
         # Re-name last output if keys not specified by Layer
-        final_output = self.pop('_last_output')
+        final_output = self.outputs.pop('_last_output')
         if final_layer.output is None:
             self.outputs[self.output_name] = final_output
             # Re-map `data_map.out` so that it reflects `output_name`.
@@ -1308,8 +1292,8 @@ class DataSet:
     # Pass dict get (but not set) operations to self.inputs, outputs, targets
     def __getitem__(self, key):
         return self.as_dict()[key]
-    def get(self, key, default=None):
-        return self.as_dict().get(key, default=default)
+    def get(self, key, default):
+        return self.as_dict().get(key, default)
     def items(self):
         return self.as_dict().items()
     def __iter__(self):
@@ -1372,7 +1356,7 @@ class DataSet:
     def concatenate_sample_outputs(data_sets):
         outputs = {}
         for d in data_sets:
-            for k, v in d.items():
+            for k, v in d.outputs.items():
                 if k not in outputs:
                     outputs[k] = []
                 outputs[k].append(v)
