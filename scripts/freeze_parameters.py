@@ -36,15 +36,6 @@ model.add_module(DoubleExponential(name='dexp'))
 # The values of these parameters will not be changed during fitting.
 model.freeze_layers('wc', 'fir', 'lvl')
 # model.freeze_layers(0, 1, 2)  # integer indexing would also work
-# TODO: reasoning behind adding the `name` kwarg was that integer indexing
-#       can get confusing / hard to read when coming back to code later on.
-#       However, this adds another layer of string references that are separate
-#       from keywords. Maybe better to have those be the same thing?
-#       I.e. if a keyword is specified, it's also the name (unless overwritten).
-#       If a name is specified, it's also a keyword for default options
-#       (unless overwritten). This comes with complications though, like dealing
-#       with  name clashes if there are multiple 'wc' keywords used in a model.
-
 
 # Fit the model again, using the previous fit as a starting point.
 model.fit(recording=recording, stimulus_name='stimulus',
@@ -71,14 +62,6 @@ model.fit(recording=recording, stimulus_name='stimulus',
 # Just freeze DoubleExponential's kappa parameter:
 model.layers['dexp'].freeze_parameters('kappa')
 # model.get_layer('dexp').freeze_parameters('kappa')  # also works
-
-
-# TODO: This script made me realize it gets unnecessarily cumbersome to specify
-#       the same recording=recording, stimulus_name='stimulus', etc. over and
-#       over for use-cases like this, when the arguments always stay the same.
-#       Maybe it would be useful to store pointers to the last fit arguments
-#       used in the model? Then we could use something like:
-model.refit(fitter_options=final_fit)
 
 # Idea being that this would copy all previous arguments, unless a new one
 # is provided to overwrite them.
