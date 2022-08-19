@@ -101,10 +101,10 @@ class DataMap:
         and are associated with the correct arrays.
         
         """
-        last_out = data['_last_output']
+        last_out = data.get('_last_output', None)
         if (last_out is None) and (self.layer.input is None):
             # First statement should only be True for first Layer
-            self.args = [data['_input_name']]
+            self.args = [data.input_name]
         missing_input = ("Cannot determine Layer input in Model.evaluate, \n"
                          f"specify `last_out` or `{self.name}.input`.")
 
@@ -143,7 +143,7 @@ class DataMap:
                 # i.e. `layer.evaluate(k=array1)`.
                 if v == '_state_name':
                     # Special check for inserting state array
-                    v = data[v]  # replace _state_name with actual key
+                    v = data.state_name  # replace _state_name with actual key
                     update_state = {k: v}
                 kwargs[k] = data[v]
         

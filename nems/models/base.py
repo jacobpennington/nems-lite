@@ -16,13 +16,6 @@ del nems.layers
 
 class Model:
     """TODO: docstring."""
-    # NOTE: there are hard-coded references to the names of these class attrs
-    # in `Model.from_json`. Be sure to update that method if these change.
-    default_input = 'input'
-    default_output = 'output'
-    default_target = 'target'
-    default_state = 'state'
-    default_backend = 'scipy'
 
     def __init__(self, layers=None, name=None):
         """TODO: docstring"""
@@ -30,6 +23,9 @@ class Model:
         if layers is not None:
             self.add_layers(*layers)
         self.name = name if name is not None else 'UnnamedModel'
+        # TODO: store optional metadata from kwarg
+        # TODO: save metadata to json (and load)
+        self.meta = {}
 
     @property
     def layers(self):
@@ -85,7 +81,8 @@ class Model:
 
     def evaluate(self, input, state=None, input_name=None, state_name=None,
                  output_name=None, n=None, return_full_data=True,
-                 use_existing_maps=False, batch_size=None):
+                 skip_initialization=False, use_existing_maps=False,
+                 batch_size=0, permute_batches=False):
         """Transform input(s) by invoking `Layer.evaluate` for each Layer.
 
         Evaluation encapsulates three steps:
@@ -143,20 +140,27 @@ class Model:
                       (incremented if multiple).
         n : int; optional.
             Evaluate the first `n` Layers (all by defualt).
-        undo_reorder : bool; default=True.
-            If True, and data axes were re-ordered, revert to the original
-            ordering after evaluating. Set False to return the re-ordered data.
         return_full_data : bool; default=True
             If True, return a dictionary containing all input data and all
             uniquely-keyed Layer outputs.
+        skip_initialization : bool; default=False
+            TODO, still WIP
+            If True, don't package input, state etc. into a DataSet.
+            Instead, `input` should already be a DataSet object.
         use_existing_maps : bool; default=False.
             If True, existing DataMaps will be used rather than generating a
             new one for each Layer. This is disabled by default for direct
             evaluation, but enabled by default when called from `Model.fit` to
             eliminate unnecessary overhead for repeated evaluations of the same
             data.
-        batch_size : int; optional.
+        batch_size : int; default=0.
             TODO, still WIP
+            -1: No sample dimension, prepend one and use 1 batch of size 1.
+            None: Use 1 batch which is the entire sample dimension.
+        permute_batches : bool; default=False.
+            TODO, still WIP
+            If True, randomly shuffle batches prior to evaluation. Typically
+            used during fitting, to shuffle between epochs.
 
         Returns
         -------
@@ -176,137 +180,53 @@ class Model:
         
         """
 
-        # TODO: Should this be implemented outside evaluate instead?
-        #       fit will need to do this for target as well, and most of this
-        #       code is not related to evaluation, just reorganization of data.
-        #       (could go in the DataSet class if that ends up being used).
-        if batch_size is not None:
-            current_args = locals()
-            current_args['batch_size'] = None
-            current_args.pop('self')  # otherwise self will be passed twice
+        if not skip_initialization:
+            # Package arrays and/or dicts in a DataSet
+            data = DataSet(
+                input=input, state=state, input_name=input_name,
+                state_name=state_name, output_name=output_name,
+            )
+        else:
+            # Input should already be a properly formatted DataSet
+            # (for example, passed by Model.fit)
+            data = input
+        if batch_size == 0:
+            data = data.prepend_samples()
+            _batch_size = 1
+        else:
+            _batch_size = batch_size
 
-            # TODO: per SVD request, also support passing in list directly
-            #       (e.g. if data is already a list, assume it has been split
-            #        and that each array in the list is one batch).
-
-            # TODO: Have to initialize data prior to making batches, otherwise
-            #       could still be an array. Add option to skip adding metadata
-            #       (otherwise have to pop it out here).
-
-            # Split data into batches along first axis. Assumes user has already
-            # separated data by trial or something else to get shape (S, T, N)
-            # instead of (T,N), where S represents number of samples/trials/etc.
-            # I.e. should end up with a list of arrays with shape (B, T, N), where B is
-            #       `batch_size` (i.e. number of samples per batch).
-            # NOTE: This implementation results in a list of views into the
-            #       original data (i.e. memory is shared). If changes are made,
-            #       make sure the new version doesn't result in copies (which
-            #       could increase memory usage dramatically).
-            # NOTE: The last batch will be smaller than the others if the number
-            #       of samples doesn't divide evenly. Need to set up cost to
-            #       account for that (i.e. can't average across batches on arrays,
-            #       but could average across batches on already-computed costs).
-            batched_data = {
-                k: np.split(v, np.arange(batch_size, len(v), batch_size))
-                for k, v in data.items()
-                }
-            # TODO: Concatenate samples in time. How to do this without copying?
-            #
-            #       Alternatively, *dont* concatenate since samples may be
-            #       shuffled (and some Layers implicitly assume contiguous time).
-            #       In that case, need to somehow indicate to Layers to treat
-            #       the first dim as n_samples and update their shape accordingly
-            #       I guess we'd want them to just copy the existing parameters
-            #       S times, temporarily, though it's not clear how to use that
-            #       extra dimension. A for loop always works but that will be slow.
-            #
-            #       Maybe some version of np.apply could work?
-            #       i.e. apply Layer._evaluate along first axis
-
-
-            batch_counts = [len(v) for _, v in batched_data.items()]
-            n_batches = batch_counts[0]
-            # Every array must have the same number of samples
-            # (and the same number of batches as a result).
-            assert np.all(np.array(batch_counts) == n_batches)
-
-            # Index into batched_data instead of collecting a list of batches,
-            # to ensure memory is still shared.
-            for i in range(batch_count):
-                batch = {k: v[i] for k, v in batched_data.items()}
-                # TODO: Not quite this simple. May need to change input_name,
-                #       state_name, etc. depending on how input was provided.
-                current_args['input'] = batch
-                batch_data = self.evaluate(**current_args)
-
-
-        current_args = locals()
-        current_args.pop('self')
-        data_generator = self.generate_layer_data(**current_args)
-        if n is not None: n -= 1
-        else: n = len(self.layers)-1
-        # Get data for the final layer only, to reduce memory use.
-        layer_data = self.get_layer_data(data_generator, n, n)[-1]
+        batch_out = []
+        batches = data.as_batches(_batch_size, permute=permute_batches)
+        for batch in batches:
+            samples = batch.as_samples()
+            sample_out = []
+            for sample in samples:
+                data_generator = self.generate_layer_data(
+                    sample, no_args=True, use_existing_maps=use_existing_maps,
+                    skip_initialization=True
+                )
+                if n is not None: n -= 1
+                else: n = len(self.layers)-1
+                # Get data for the final layer only, to reduce memory use.
+                layer_data = self.get_layer_data(data_generator, n, n)[-1]
+                sample_out.append(layer_data['data'])
+            batch_out.append(DataSet.concatenate_sample_outputs(sample_out))
+        all_outputs = DataSet.concatenate_sample_outputs(batch_out)
+        # Inputs (and any targets) should not have changed
+        data.outputs = all_outputs
+        if batch_size == 0:
+            # Remove prepended sample dimension
+            data = data.squeeze_samples()
 
         if not return_full_data:
-            data = layer_data['out']  # output of final Layer._evaluate
+            out = data.outputs
+            if len(out) == 1:
+                out = out.values()[0]
         else:
-            data = layer_data['data']
-        return data
-
-    def _initialize_data(self, input, state=None, input_name=None,
-                         state_name=None, **eval_kwargs):
-        """Package `input` and `state` into a `data` dictionary.
-        
-        Internal for `Model.generate_layer_data`. See `Model.evaluate` for
-        parameter documentation.
-
-        Returns
-        -------
-        data : dict
-        
-        """
-
-        if input_name is None: input_name = self.default_input
-        if state_name is None: state_name = self.default_state
-
-        # Initialize `data` dictionary.
-        if isinstance(input, (np.ndarray, list)):
-            data = {input_name: input}
-            if state is not None:
-                data[state_name] = state
-        else:
-            # Arrays in shallow copy will share memory, but the new data
-            # dictionary will end up with additional keys after evaluation.
-            data = input.copy()
-
-        # Rearrange and/or add axes if needed.
-        for k, v in data.items():
-            if data[k].ndim == 1:
-                # TODO: raise warning that most Layers (and some optional code
-                #       in Model.evaluate) assume 2 dimensions. Don't actually
-                #       pad axis here b/c that will duplicate memory, i.e.
-                #       data[k] will point to a new copy instead of the original
-                #       array.
-                pass
-
-        reserved_keys = ['_last_output', '_state_name']
-        for rk in reserved_keys:
-            if rk in data:
-                # TODO: raise warning that this is a reserved key, data will
-                #       be overwritten in evaluate loop
-                pass
-
-        # First Layer will use this key if Layer.input is None.
-        data['_input_name'] = input_name
-        # Layers with a `state_arg` that don't specify any inputs will get
-        # the array at this key, if it exists, in addition to last_output.
-        data['_state_name'] = state_name
-        # No outputs yet
-        data['_last_output'] = None
+            out = data.as_dict()
 
         return data
-
 
     def _evaluate_layer(self, layer, data):
         """Evaluates one Layer. Internal for `Model.generate_layer_data`.
@@ -328,48 +248,17 @@ class Model:
         # Save output (or don't) based on Layer.DataMap.
         # data_keys is always a list, but output might be a list or one array.
         data_keys = layer.data_map.out
-        if isinstance(output, (list, tuple)):
-            data.update({k: v for k, v in zip(data_keys, output)
-                        if k is not None})
-        elif data_keys[0] is not None:
-            data[data_keys[0]] = output
-        # Always save output to _last_output, for use by subsequent Layers.
-        data['_last_output'] = output
+        data.save_output(data_keys, output)
 
         return args, kwargs, output
-
-
-    def _finalize_data(self, final_layer, data, output_name=None,
-                       **eval_kwargs):
-        """Remove metadata and undo re-formatting if needed.
-
-        Internal for `Model.generate_layer_data`. See `Model.evaluate` for
-        parameter documentation.
-
-        Returns
-        -------
-        None
-        
-        """
-
-        if output_name is None: output_name = self.default_output
-        # Remove metadata, no longer needed.
-        _ = data.pop('_input_name')
-        _ = data.pop('_state_name')
-
-        # Re-name last output if keys not specified by Layer
-        final_output = data.pop('_last_output')
-        if final_layer.output is None:
-            data[output_name] = final_output
-            # Re-map `data_map.out` so that it reflects `output_name`.
-            final_layer.data_map.map_outputs(final_output, output_name)
 
 
     # TODO: possibly move this method and any related subroutines to a separate
     #       module (inside a new `base` directory), with simple wrappers in
     #       Model as the public-facing API.
-    def generate_layer_data(self, input, copy_data=False,
-                            use_existing_maps=False, **eval_kwargs):
+    def generate_layer_data(self, input, copy_data=False, no_args=False,
+                            use_existing_maps=False, skip_initialization=False,
+                            **eval_kwargs):
         """Generate input and output arrays for each Layer in Model.
         
         This method serves as the core loop for `Model.evaluate`, but is exposed
@@ -385,12 +274,17 @@ class Model:
             If True, a deep copy of data will be stored in `layer_data['data']`
             after each `Layer._evaluate`. This will be very memory intensive
             for large data, and is generally not recommended.
+        no_args : bool; default=False.
+            Don't save `args` or `kwargs` (memory optimization for `evaluate`).
         use_existing_maps : bool; default=False.
             If True, existing DataMaps will be used rather than generating a
             new one for each Layer. This is disabled by default for direct
             evaluation, but enabled by default when called from `Model.fit` to
             eliminate unnecessary overhead for repeated evaluations of the same
             data.
+        skip_initialization : bool; default=False.
+            If True, don't create a new DataSet. Input should already be a
+            properly formatted DataSet.
         eval_kwargs : dict
             Additional keyword arguments for `Model._initialize_data` and
             `Model._finalize_data`. See `Model.evaluate` for documentation.
@@ -436,7 +330,12 @@ class Model:
 
         """
 
-        data = self._initialize_data(input, **eval_kwargs)
+        # TODO: don't do this here, need to refactor to expect DataSet
+        #       as input
+        if not skip_initialization:
+            data = DataSet(input, **eval_kwargs)
+        else:
+            data in input
 
         max_n = len(self.layers)
         for n, layer in enumerate(self.layers):
@@ -456,7 +355,8 @@ class Model:
                 yield layer_data
 
         # On final layer, only update data after evaluation
-        self._finalize_data(layer, data, last_output=o, **eval_kwargs)
+        #self._finalize_data(layer, data, last_output=o, **eval_kwargs)
+        data.finalize_data(final_layer=layer)
         if copy_data:
             layer_data['data'] = copy.deepcopy(data)
         else:
@@ -597,7 +497,7 @@ class Model:
     # TODO: Move the backend implementations and any related subroutines to a
     #       separate module (inside a new `base` directory), with simple
     #       wrappers in Model as the public-facing API.
-    def fit(self, input, target=None, target_name=None, backend=None,
+    def fit(self, input, target=None, target_name=None, backend='scipy',
             cost_function='mse', fitter_options=None, backend_options=None,
             **eval_kwargs):
         """Optimize model parameters to match `Model.predict(input)` to target.
@@ -629,9 +529,8 @@ class Model:
         target_name : str or None; optional.
             If str, and `target is None`, then `target_name` should be the key
             for the target data in `input`.
-        backend : str or None; optional.
+        backend : str; default='scipy'.
             Determines how Model will be fit.
-            If None    : Refer to `Model.default_backend`.
             If 'scipy' : Use `scipy.optimize.minimize(method='L-BFGS-B')`.
             If 'tf'    : Use TensorFlow. Also aliased as 'tensorflow'.
             TODO: any other options we want to support?
@@ -702,6 +601,10 @@ class Model:
         #       backend.fit(...)
         #       return backend
         #       (i.e. no if/else loop, implement elsewhere)
+
+        # TODO: return a copy of some kind instead of updating model parameters
+        #       in-place. Should be as simple as replacing self with self.copy()
+        #       (after implementing a .copy method).
         if backend == 'scipy':
             scipy_backend = SciPyBackend(
                 self, input, eval_kwargs=eval_kwargs, **backend_options
@@ -1068,10 +971,6 @@ class Model:
         data = {
             'layers': list(self._layers.values()),
             'name': self.name,
-            'defaults': {
-                'input': self.default_input, 'output': self.default_output, 
-                'state': self.default_state, 'backend': self.default_backend
-                }
             }
         
         return data
@@ -1091,8 +990,6 @@ class Model:
         """
         # TODO: any other metadata?
         model = cls(layers=json['layers'], name=json['name'])
-        for k, v in json['defaults'].items():
-            setattr(model, f"default_{k}", v)
         return model
 
     # Placed this code next to `_LayerDict` for easier cross-checking of code
@@ -1204,47 +1101,282 @@ class _LayerDict:
         return self._dict.__repr__()
 
 
-# TODO: may not end up doing this, but sketching out the idea here.
-#       Essentially a watered-down Recording that handles data sanitation
-#       but otherwise acts as a dict, no epochs/splitting/etc. Possibly
-#       to/from json but would just be a wrapper for saving the dict, goal is
-#       for the class to be stateless except for ._data.
-class DataSet(dict):
-    def __init__(self, input, state=None, target=None, input_name=None,
-                 state_name=None, output_name=None, target_name=None,
-                 undo_reorder=True):
-        # TODO: may not actually need all these kwargs, or may not need to
-        #       save them all as attrs
+# TODO: update docs elsewhere to list correct type for `data`.
+# TODO: revisit assumptions about data type. I think we need to just only
+#       allow arrays in the data dictionaries to make things simpler. For lists,
+#       store them at separate keys and use Layer.input to supply them as a list
+#       if needed. Pretty sure Layer.output already gets treated like this anyway,
+#       I just sort of lost track.
+class DataSet:
+    default_input = 'input'
+    default_output = 'output'
+    default_target = 'target'
+    default_state = 'state'
+
+    def __init__(self, input, state=None, target=None, dtype=np.float64,
+                 input_name=None, state_name=None, output_name=None,
+                 target_name=None):
+        """TODO: docs."""
+        # Set self.<attr>_name to default if <attr>_name is None, otherwise
+        # save self.<attr>_name.
+        names = zip(['input', 'state', 'output', 'target'],
+                    [input_name, state_name, output_name, target_name])
+        for attr, name in names:
+            if name is None: name = getattr(self, f'default_{attr}')
+            setattr(self, f'{attr}_name', name)
+        self.dtype = dtype
+        # TODO: how to use dtype
         self.initialize_data(input, state, target)  # other kwargs too
 
-    def initialize_data(self, input, state, target):  # other kwargs too
-        # TODO: do stuff from Model._initialize_data to generate data
-        # TODO: 3 options for parsing default names:
-        #       1) do it in the model before creating DataSet, make input and
-        #          output names required.
-        #       2) do it here with reference to Model
-        #          (breaks statelessness, Model.default_<name> could change.
-        #           also breaks compartmentalization)
-        #       3) do it here with extra kwargs for defaults.
-        #       4) do it here and move defaults to be DataSet class attrs
-        #          (less convenient for users)
-        data = input
-        super().__init__(**data)  # enables __getitem__, __setitem__, etc.
+    def initialize_data(self, input, state, target, **eval_kwargs):
+        """TODO: docs"""
+        # NOTE: additional kwargs ignored for convenience, since initialize
+        #       and finalize are both related to Model.evaluate.
 
-    def finalize_data(self):
-        # TODO: port Model._finalize_data() here.
-        pass
+        # Initialize inputs
+        if isinstance(input, (np.ndarray, list)):
+            input_dict = {self.input_name: input}
+            if state is not None:
+                input_dict[self.state_name] = state
+        else:
+            # Arrays in shallow copy will share memory, but the new data
+            # dictionary will end up with additional keys after evaluation.
+            input_dict = input.copy()
 
-    def passthrough_data_operations(self):
-        # TODO: (not a real method name) convenience wrapper for
-        #       `for array in data, get fn(array)`
-        #       and/or `for array in data, set array = fn(array)` (i.e. inplace)
-        #       For example, to apply the same jacknife indices to all arrays
-        pass
+        # Initialize outputs
+        output_dict = {}
 
-    def other_sanitation(self):
-        # TODO: (not a real method name) what else would be useful?
-        pass
+        # Initialize targets
+        if target is None:
+            target_dict = {}
+        elif isinstance(target, (np.ndarray, list)):
+            target_dict = {self.target_name: target}
+        else:
+            target_dict = target.copy()
 
+        self.inputs = input_dict
+        self.outputs = output_dict
+        self.targets = target_dict
+
+    def save_output(self, keys, output):
+        """TODO: docs"""
+        # data_keys is always a list, but output might be a list or one array.
+        if isinstance(output, (list, tuple)):
+            self.outputs.update({k: v for k, v in zip(keys, output)
+                        if k is not None})
+        elif keys[0] is not None:
+            self.outputs[keys[0]] = output
+        # Always save output to _last_output for use by Model.evaluate
+        self.outputs['_last_output'] = output
+
+    def finalize_data(self, final_layer, **eval_kwargs):
+        """TODO: docs"""
+        # NOTE: additional kwargs ignored for convenience, since initialize
+        #       and finalize are both related to Model.evaluate.
+        # Re-name last output if keys not specified by Layer
+        final_output = self.pop('_last_output')
+        if final_layer.output is None:
+            self.outputs[self.output_name] = final_output
+            # Re-map `data_map.out` so that it reflects `output_name`.
+            final_layer.data_map.map_outputs(final_output, self.output_name)
+
+    def as_broadcasted_samples(self):
+        """TODO: docs"""
+        # TODO: Iterate through all inputs, outputs, and targets and
+        #       broadcast them against each other (on first dimension only)
+        #       so that, for example:
+        #       input (1, 100, 5), input2 (10, 100, 5), target (10, 100, 5)
+        #       changes to
+        #       input(10, 100, 5) ... (rest same)
+        #       without duplicating memory.
+        # NOTE: Broadcasting only happens *within* each dict, i.e. inputs
+        #       will not be broadcast to match targets or vise-versa.
+        #       That shouldn't be necessary, since cost functions will handle
+        #       broadcasting between inputs & targets separately.
+
+        inputs = self._broadcast_dict(self.inputs)
+        outputs = self._broadcast_dict(self.outputs)
+        targets = self._broadcast_dict(self.targets)
+
+        return self.modified_copy(inputs, outputs, targets)
+
+    @staticmethod
+    def _broadcast_dict(d):
+        """TODO: docs, internal for broadcast_samples."""
+        if len(d) < 2:
+            # Nothing to broadcast to
+            new_d = d.copy()
+        else:
+            new_d = {}
+            for k, v in d.items():
+                temp = d.copy()
+                temp.pop(k)  # compare against all other arrays
+                for k2, v2 in temp.items():
+                    try:
+                        # Only try to broadcast to the other array's first dim
+                        # (i.e. number of samples). If v.shape = (1, ...) and
+                        # v2.shape = (N, ...), new_v.shape = (N, ...).
+                        new_v = np.broadcast_to(v, v2.shape[:1] + v.shape[1:])
+                        assert np.shares_memory(new_v, v)
+                        new_d[k] = new_v
+                    except ValueError:
+                        # Incompatible shape (either both arrays have multiple
+                        # samples or v has multiple and v2 has 1).
+                        new_d[k] = v
+        
+        return new_d
+
+    def as_batches(self, batch_size=None, permute=True):
+        """TODO: docs"""
+        # TODO: per SVD request, also support passing in list directly
+        #       (e.g. if data is already a list, assume it has been split
+        #        and that each array in the list is one batch).
+
+        # Split data into batches along first axis. Should end up with a list
+        # of arrays with shape (B, T, N), where B is `batch_size` (i.e. number
+        # of samples per batch).
+        # NOTE: This implementation results in a list of views into the
+        #       original data (i.e. memory is shared). If changes are made,
+        #       make sure the new version doesn't result in copies (which
+        #       could increase memory usage dramatically).
+        # NOTE: The last batch will be smaller than the others if the number
+        #       of samples doesn't divide evenly. Need to set up cost to
+        #       account for that (i.e. can't average across batches on arrays,
+        #       but could average across batches on already-computed costs).
+        d = self.as_broadcasted_samples()
+
+        batched_inputs, batched_outputs, batched_targets = [
+            d._arrays_to_batches(_dict, batch_size)
+            for _dict in [d.inputs, d.outputs, d.targets]
+        ]
+
+        # NOTE: Every array must have the same number of samples
+        # (and the same number of batches as a result), otherwise this will
+        # not work as intended.
+        n_batches = len(list(batched_inputs.values())[0])
+
+        # Index into batched_data instead of collecting a list of batches,
+        # to ensure memory is still shared. Also makes permutations easier.
+        indices = np.arange(n_batches)
+        if permute:
+            # Randomly shuffle indices
+            np.random.shuffle(indices)
+
+        for i in indices:
+            inputs = {k: v[i] for k, v in batched_inputs.items()}
+            outputs = {k: v[i] for k, v in batched_outputs.items()}
+            targets = {k: v[i] for k, v in batched_targets.items()}
+            d.assert_no_copies(inputs, outputs, targets)
+            yield d.modified_copy(inputs, outputs, targets)
+
+    def _arrays_to_batches(self, data, batch_size):
+        """TODO: docs, internal for as_batches."""
+        if (batch_size is None) and (len(data) > 0):
+            # Assume sample dimension exists, set batch_size to force 1 batch
+            batch_size = list(data.values())[0].shape[0]
+        batched_data = {
+            k: np.split(v, np.arange(batch_size, len(v), batch_size))
+            for k, v in data.items()
+            }
+
+        return batched_data
+
+    def as_samples(self):
+        """TODO: docs"""
+        # NOTE: must alread have a sample dimension, use as_batches first
+        #       if not.
+        # NOTE: Every array must have the same number of samples
+        #       otherwise this will not work as intended.
+        n_samples = len(list(self.inputs.values())[0])
+        s_inputs, s_outputs, s_targets = [
+            {k: np.split(v, n_samples) for k, v in d.items()}
+            for d in [self.inputs, self.outputs, self.targets]
+            ]
+
+        # TODO: want to be able to permute samples within batches as well?
+        for i in range(n_samples):
+            inputs = {k: v[i].squeeze(axis=0) for k, v in s_inputs.items()}
+            outputs = {k: v[i].squeeze(axis=0) for k, v in s_outputs.items()}
+            targets = {k: v[i].squeeze(axis=0) for k, v in s_targets.items()}
+            self.assert_no_copies(inputs, outputs, targets)
+            yield self.modified_copy(inputs, outputs, targets)
+
+
+    def as_dict(self):
+        return {**self.inputs, **self.outputs, **self.targets}
+
+    # Pass dict get (but not set) operations to self.inputs, outputs, targets
+    def __getitem__(self, key):
+        return self.as_dict()[key]
+    def get(self, key, default=None):
+        return self.as_dict().get(key, default=default)
+    def items(self):
+        return self.as_dict().items()
+    def __iter__(self):
+        return self.as_dict().__iter__()
+    def __len__(self):
+        return len(self.as_dict())
+
+    def modified_copy(self, inputs, outputs, targets):
+        # TODO: make sure this still shares memory
+        data = DataSet(
+            inputs, state=None, target=targets, dtype=self.dtype,
+            input_name=self.input_name, state_name=self.state_name,
+            output_name=self.output_name, target_name=self.target_name
+            )
+        data.outputs = outputs
+        return data
+
+    def apply(self, fn, allow_copies=False):
+        """TODO: docs. Maps {k: v} -> {k: fn(v)} for all k, v."""
+        inputs, outputs, targets = [
+            self._apply_to_dict(fn, d, allow_copies=allow_copies)
+            for d in [self.inputs, self.outputs, self.targets]
+            ]
+        return self.modified_copy(inputs, outputs, targets)
     
-    
+    def _apply_to_dict(self, fn, d, allow_copies=False):
+        new_d = d.copy()
+        for k, v in new_d.items():
+            new_v = fn(v)
+            if not allow_copies:
+                assert np.shares_memory(new_v, v)
+            new_d[k] = new_v
+        return new_d
+
+    def assert_no_copies(self, inputs, outputs, targets):
+        """TODO: docs. For debugging, check if arrays share memory with self."""
+        for k in inputs.keys():
+            assert np.shares_memory(inputs[k], self.inputs[k])
+        for k in outputs.keys():
+            assert np.shares_memory(outputs[k], self.outputs[k])
+        for k in targets.keys():
+            assert np.shares_memory(targets[k], self.targets[k])
+
+    def prepend_samples(self):
+        """Prepend a singleton sample dimension."""
+        return self.apply(lambda v: v[np.newaxis,...], allow_copies=False)
+
+    def squeeze_samples(self):
+        """Remove singleton sample dimension from all arrays."""
+        return self.apply(lambda v: np.squeeze(v, axis=0), allow_copies=False)
+
+    # TODO: Looks like there's no way to concatenate numpy views without
+    #       creating copies, since views can be non-continguous. So instead,
+    #       only concatenating outputs (which have to be new arrays anyway
+    #       by definition). But if we can figure out a way to concatenate
+    #       inputs and targets without duplicating memory, this should just
+    #       return a modified copy with all the inputs, outputs and targets
+    #       concatenated instead.
+    @staticmethod
+    def concatenate_sample_outputs(data_sets):
+        outputs = {}
+        for d in data_sets:
+            for k, v in d.items():
+                if k not in outputs:
+                    outputs[k] = []
+                outputs[k].append(v)
+        concatenated = {k: np.concatenate(v, axis=0)
+                        for k, v in outputs.items()}
+
+        return concatenated

@@ -76,7 +76,6 @@ class TensorFlowBackend(Backend):
 
         return model
 
-
     def fit(self, input, target, eval_kwargs=None, learning_rate=0.001,
             epochs=1):
 
