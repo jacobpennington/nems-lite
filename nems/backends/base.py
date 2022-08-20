@@ -11,11 +11,11 @@ class Backend:
             )
 
     # Must accept input data and eval_kwargs (dict of kwargs for Model.evaluate)
-    def build(self, input, eval_kwargs=None, **backend_options):
+    def _build(self, input, eval_kwargs=None, **backend_options):
         """Return whatever object the backend uses for fitting/predicting."""
         raise NotImplementedError
         
-    def fit(self, input, *args, eval_kwargs=None, **kwargs):
+    def _fit(self, input, *args, eval_kwargs=None, **kwargs):
         """Call _model.fit() or equivalent."""
         raise NotImplementedError
 
