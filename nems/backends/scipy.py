@@ -10,7 +10,7 @@ class SciPyBackend(Backend):
     def predict(self, input, eval_kwargs=None):
         if eval_kwargs is None: eval_kwargs = {}
         return self.nems_model.predict(input, **eval_kwargs)
-    def fit(self, input, target, eval_kwargs=None, cost_function='mse',
+    def fit(self, input, target=None, eval_kwargs=None, cost_function='mse',
             log_spacing=5, **fitter_options):
         """TODO: docs.
 
@@ -29,6 +29,21 @@ class SciPyBackend(Backend):
             eval_kwargs['use_existing_maps'] = True
         if 'undo_reorder' not in eval_kwargs:
             eval_kwargs['undo_reorder'] = False
+        if eval_kwargs.get('skip_initialization'):
+            data = input
+        else:
+            data = DataSet
+
+
+        # TODO: possibly scrap this and put scipy .fit back in Model.fit?
+        #       and just not have a separate Backend. Getting confusing/frustrating
+        #       with duplicating the same options over and over for no reason other
+        #       than organizing the code. Can still return some
+        #       TBD FitResult object for all backends. 
+
+        # TODO: need something like generate_batch_data so that cost can be
+        #       computed one batch at a time.
+
 
         def _scipy_cost_wrapper(_vector, _model, _input, _target,
                                 _cost_function, _eval_kwargs):

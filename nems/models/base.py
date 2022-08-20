@@ -81,8 +81,7 @@ class Model:
 
     def evaluate(self, input, state=None, input_name=None, state_name=None,
                  output_name=None, n=None, return_full_data=True,
-                 skip_initialization=False, use_existing_maps=False,
-                 batch_size=0, permute_batches=False):
+                 use_existing_maps=False, batch_size=0, permute_batches=False):
         """Transform input(s) by invoking `Layer.evaluate` for each Layer.
 
         Evaluation encapsulates three steps:
@@ -141,10 +140,6 @@ class Model:
         return_full_data : bool; default=True
             If True, return a dictionary containing all input data and all
             uniquely-keyed Layer outputs.
-        skip_initialization : bool; default=False
-            TODO, still WIP
-            If True, don't package input, state etc. into a DataSet.
-            Instead, `input` should already be a DataSet object.
         use_existing_maps : bool; default=False.
             If True, existing DataMaps will be used rather than generating a
             new one for each Layer. This is disabled by default for direct
@@ -178,7 +173,7 @@ class Model:
         
         """
 
-        if not skip_initialization:
+        if not isinstance(input, DataSet):
             # Package arrays and/or dicts in a DataSet
             data = DataSet(
                 input=input, state=state, input_name=input_name,
@@ -188,34 +183,39 @@ class Model:
             # Input should already be a properly formatted DataSet
             # (for example, passed by Model.fit)
             data = input
-        if batch_size == 0:
-            data = data.prepend_samples()
-            _batch_size = 1
-        else:
-            _batch_size = batch_size
+        # if batch_size == 0:
+        #     data = data.prepend_samples()
+        #     _batch_size = 1
+        # else:
+        #     _batch_size = batch_size
 
-        batch_out = []
-        batches = data.as_batches(_batch_size, permute=permute_batches)
-        for batch in batches:
-            samples = batch.as_samples()
-            sample_out = []
-            for sample in samples:
-                data_generator = self.generate_layer_data(
-                    sample, use_existing_maps=use_existing_maps,
-                    skip_initialization=True
-                )
-                if n is not None: n -= 1
-                else: n = len(self.layers)-1
-                # Get data for the final layer only, to reduce memory use.
-                layer_data = self.get_layer_data(data_generator, n, n)[-1]
-                sample_out.append(layer_data['data'].prepend_samples())
-            batch_out.extend(sample_out)
-        all_outputs = DataSet.concatenate_sample_outputs(batch_out)
+        # batch_out = []
+        # batches = data.as_batches(_batch_size, permute=permute_batches)
+        # for batch in batches:
+        #     samples = batch.as_samples()
+        #     sample_out = []
+        #     for sample in samples:
+        #         data_generator = self.generate_layer_data(
+        #             sample, use_existing_maps=use_existing_maps,
+        #         )
+        #         if n is not None: n -= 1
+        #         else: n = len(self.layers)-1
+        #         # Get data for the final layer only, to reduce memory use.
+        #         layer_data = self.get_layer_data(data_generator, n, n)[-1]
+        #         sample_out.append(layer_data['data'].prepend_samples())
+        #     batch_out.extend(sample_out)
+        batch_out = list(self.generate_batch_data(
+            input, state=state, input_name=input_name, state_name=state_name,
+            output_name=output_name, n=n, batch_size=batch_size,
+            permute_batches=permute_batches, use_existing_maps=use_existing_maps
+            ))
+        if batch_size == 0:
+            # Only one batch, remove prepended sample dimension
+            all_outputs = batch_out[0].squeeze_samples().outputs
+        else:
+            all_outputs = DataSet.concatenate_sample_outputs(batch_out)
         # Inputs (and any targets) should not have changed
         data.outputs = all_outputs
-        if batch_size == 0:
-            # Remove prepended sample dimension
-            data = data.squeeze_samples()
 
         if not return_full_data:
             out = data.outputs
@@ -226,37 +226,46 @@ class Model:
 
         return out
 
-    def _evaluate_layer(self, layer, data):
-        """Evaluates one Layer. Internal for `Model.generate_layer_data`.
-        
-        Returns
-        -------
-        args : list of ndarray
-            Positional arguments for `Layer.evaluate`.
-        kwargs : dict of ndarray
-            Keyword arguments for `Layer.evaluate`.
-        output : ndarray or list of ndarray
-            Return value of `Layer.evaluate(*args, **kwargs)`.
-        
-        """
-        
-        # Get input & output arrays
-        args, kwargs, output = layer._evaluate(data)
+    def generate_batch_data(self, input, n=None, batch_size=0,
+                            permute_batches=False, use_existing_maps=False,
+                            **eval_kwargs):
+        if not isinstance(input, DataSet):
+            # Package arrays and/or dicts in a DataSet
+            data = DataSet(input=input, **eval_kwargs)
+        else:
+            # Input should already be a properly formatted DataSet
+            # (for example, passed by Model.fit)
+            data = input
+        if batch_size == 0:
+            data = data.prepend_samples()
+            _batch_size = 1
+        else:
+            _batch_size = batch_size
 
-        # Save output (or don't) based on Layer.DataMap.
-        # data_keys is always a list, but output might be a list or one array.
-        data_keys = layer.data_map.out
-        data.save_output(data_keys, output)
+        batches = data.as_batches(_batch_size, permute=permute_batches)
+        for batch in batches:
+            samples = batch.as_samples()
+            sample_out = []
+            for sample in samples:
+                data_generator = self.generate_layer_data(
+                    sample, use_existing_maps=use_existing_maps,
+                )
+                if n is not None: n -= 1
+                else: n = len(self.layers)-1
+                # Get data for the final layer only, to reduce memory use.
+                layer_data = self.get_layer_data(data_generator, n, n)[-1]
+                sample_out.append(layer_data['data'].prepend_samples())
 
-        return args, kwargs, output
+            batch_out = DataSet.concatenate_sample_outputs(sample_out)
+            batch.outputs = batch_out
+            yield batch
 
 
     # TODO: possibly move this method and any related subroutines to a separate
     #       module (inside a new `base` directory), with simple wrappers in
     #       Model as the public-facing API.
     def generate_layer_data(self, input, copy_data=False,
-                            use_existing_maps=False, skip_initialization=False,
-                            **eval_kwargs):
+                            use_existing_maps=False, **eval_kwargs):
         """Generate input and output arrays for each Layer in Model.
         
         This method serves as the core loop for `Model.evaluate`, but is exposed
@@ -278,9 +287,6 @@ class Model:
             evaluation, but enabled by default when called from `Model.fit` to
             eliminate unnecessary overhead for repeated evaluations of the same
             data.
-        skip_initialization : bool; default=False.
-            If True, don't create a new DataSet. Input should already be a
-            properly formatted DataSet.
         eval_kwargs : dict
             Additional keyword arguments for `Model._initialize_data` and
             `Model._finalize_data`. See `Model.evaluate` for documentation.
@@ -326,9 +332,7 @@ class Model:
 
         """
 
-        # TODO: don't do this here, need to refactor to expect DataSet
-        #       as input
-        if not skip_initialization:
+        if not isinstance(input, DataSet):
             data = DataSet(input, **eval_kwargs)
         else:
             data = input
@@ -360,6 +364,29 @@ class Model:
 
         yield layer_data
 
+    def _evaluate_layer(self, layer, data):
+        """Evaluates one Layer. Internal for `Model.generate_layer_data`.
+        
+        Returns
+        -------
+        args : list of ndarray
+            Positional arguments for `Layer.evaluate`.
+        kwargs : dict of ndarray
+            Keyword arguments for `Layer.evaluate`.
+        output : ndarray or list of ndarray
+            Return value of `Layer.evaluate(*args, **kwargs)`.
+        
+        """
+        
+        # Get input & output arrays
+        args, kwargs, output = layer._evaluate(data)
+
+        # Save output (or don't) based on Layer.DataMap.
+        # data_keys is always a list, but output might be a list or one array.
+        data_keys = layer.data_map.out
+        data.save_output(data_keys, output)
+
+        return args, kwargs, output
 
     # TODO: maybe remove the data_generator arg and just have this wrap
     #       generate_layer_data? 
@@ -493,7 +520,7 @@ class Model:
     # TODO: Move the backend implementations and any related subroutines to a
     #       separate module (inside a new `base` directory), with simple
     #       wrappers in Model as the public-facing API.
-    def fit(self, input, target=None, target_name=None, backend='scipy',
+    def fit(self, input, target, target_name=None, backend='scipy',
             cost_function='mse', fitter_options=None, backend_options=None,
             **eval_kwargs):
         """Optimize model parameters to match `Model.predict(input)` to target.
@@ -515,13 +542,12 @@ class Model:
             If ndarray, use this as the input to the first Layer. Otherwise,
             use keys specified by `input_name` or `Layer.input` to determine
             the first input.
-        target : np.ndarray or list of np.ndarray; optional.
-            TODO: support list
+        target : np.ndarray or dict of np.ndarray.
+            TODO: support dict
             If ndarray, this will be the fitter's target data (i.e. try to
-            match the model prediction to this). This option can only be used
-            in conjunction with ndarray `input`. If other data is needed, use a
-            dictionary input containing all data and specify `target_name` to
-            indicate the key of the target data.
+            match the model prediction to this). If dict, ... 
+            TODO: dict version is more complicated than I was thinking of.
+            Would need to also specify a mapping of output -> target.
         target_name : str or None; optional.
             If str, and `target is None`, then `target_name` should be the key
             for the target data in `input`.
@@ -552,44 +578,17 @@ class Model:
             # Convert string reference to metric function
             cost_function = get_metric(cost_function)
 
-        # TODO: Answer: enforce always having the batch/sample dimension, but
-        #       expect data w/o it by default. I.e. prepend a singleton dim
-        #       unless user specifies batch=something
-
+        # Initialize DataSet
+        data = DataSet(
+            input, target=target, target_name=target_name, **eval_kwargs
+            )
+        eval_kwargs['skip_initialization'] = True
         # Evaluate once prior to fetching backend, to ensure all DataMaps are
         # up to date and include outputs.
         _ = self.evaluate(
             input, use_existing_maps=False, **eval_kwargs
             )
-
-        # TODO: replace with DataSet method?
-        input = self._initialize_data(input, **eval_kwargs)
-        # Move target out of input
-        if target is None: target = input.pop(target_name, None)
-        # Remove meta keys added by initialize
-        # TODO: After migrating to DataSet class, set this as attributes instead
-        #       so that this isn't an issue.
-        for k, v in input.items():
-            if isinstance(v, str):
-                _ = input.pop(k)
-
-        # TODO: prediction & target currently assumed to be arrays, but they can
-        #       also be lists. Need to do some extra checks to align those
-        #       correctly for the cost function. Only working so far by accident,
-        #       will break if more than one array in prediction list.
-        #
-        #       Need to decide what to do in this case: iterate through the lists
-        #       and take the average? (allows different lengths)
-        #       Concatenate and compute all at once? (all same lengths)
-        #       Other? (e.g. multiple predicts vs one target, take average)
-        #
-        #       wish list:  matching lists (compare, add/average on concat.)
-        #                   matching arrays
-        #                   one array -> list
-        #                   list -> one array
-        #                   (roughly in order of priority)
-        #       *also think about best way to compare cost for multiple neurons etc
-
+        
         # TODO: convert this to something like
         #       backend = _lookup_backend(backend)
         #       backend.fit(...)
@@ -601,7 +600,7 @@ class Model:
         #       (after implementing a .copy method).
         if backend == 'scipy':
             scipy_backend = SciPyBackend(
-                self, input, eval_kwargs=eval_kwargs, **backend_options
+                self, data, eval_kwargs=eval_kwargs, **backend_options
                 )
             scipy_backend.fit(
                 input, target, eval_kwargs=eval_kwargs, **fitter_options
@@ -1085,12 +1084,16 @@ class _LayerDict:
         return self._dict.__repr__()
 
 
+# TODO: move this to a new module
 # TODO: update docs elsewhere to list correct type for `data`.
 # TODO: revisit assumptions about data type. I think we need to just only
 #       allow arrays in the data dictionaries to make things simpler. For lists,
 #       store them at separate keys and use Layer.input to supply them as a list
 #       if needed. Pretty sure Layer.output already gets treated like this anyway,
 #       I just sort of lost track.
+# TODO: remove/make optional all the asser(shares_memory) calls, to speed up
+#       evaluation. still want something in place for debugging, but they don't 
+#       need to be checked every time.
 class DataSet:
     default_input = 'input'
     default_output = 'output'
@@ -1099,8 +1102,12 @@ class DataSet:
 
     def __init__(self, input, state=None, target=None, dtype=np.float64,
                  input_name=None, state_name=None, output_name=None,
-                 target_name=None):
-        """TODO: docs."""
+                 target_name=None, **kwargs):
+        """TODO: docs.
+        
+        NOTE: extra kwargs are silently ignored for convenience.
+        
+        """
         # Set self.<attr>_name to default if <attr>_name is None, otherwise
         # save self.<attr>_name.
         names = zip(['input', 'state', 'output', 'target'],
