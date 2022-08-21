@@ -16,6 +16,7 @@ for `numpy` (which uses `openblas` instead of `mkl`):
 Coming soon, roughly in order of priority:
 * Fix cost function behavior in Model.fit to work with both lists and arrays, and set up (non-TF) batched optimization.
 * Convert dev_notebooks to unit tests where appropriate (& automatic testing using Travis, like nems0).
+* Finish/clean up docs and set up readthedocs.
 * Add more Layers from nems0.
 * Add core pre-processing and scoring from nems0.
 * Try Numba for Layer.evaluate and cost functions.
