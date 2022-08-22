@@ -39,3 +39,29 @@ class Backend:
         
         """
         raise NotImplementedError
+
+
+class FitResults:
+
+    def __init__(self, initial_parameters, final_parameters, initial_error,
+                 final_error, backend_name, **misc):
+        self.initial_error = initial_error
+        self.final_error = final_error
+        self.n_parameters_changed = sum(initial_parameters != final_parameters)
+        self.backend = backend_name
+        self.misc = misc
+
+    def __repr__(self):
+        attrs = self.__dict__
+        misc = attrs.pop('misc')
+
+        string = "Fit Results:\n"
+        string += "="*11 + "\n"
+        for k, v in attrs.items():
+            string += f"{k}: {v}\n"
+        string += '-'*11 + "\n"
+        string += f"Misc:\n"
+        string += f"{misc}\n"
+        string += "="*11
+
+        return string
