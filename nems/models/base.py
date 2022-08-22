@@ -583,30 +583,30 @@ class Model:
         #       return backend
         #       (i.e. no if/else loop, implement elsewhere)
 
-        # TODO: return a copy of some kind instead of updating model parameters
-        #       in-place. Should be as simple as replacing self with self.copy()
-        #       (after implementing a .copy method).
+        # new_model = self.copy()
         if backend == 'scipy':
-            scipy_backend = SciPyBackend(
-                self, data, eval_kwargs=eval_kwargs, **backend_options
+            backend = SciPyBackend(
+                new_model, data, eval_kwargs=eval_kwargs, **backend_options
                 )
-            scipy_backend._fit(
-                data, eval_kwargs=eval_kwargs, **fitter_options
-                )
-            return scipy_backend
 
         elif (backend == 'tf') or (backend == 'tensorflow'):
             from nems.backends.tf import TensorFlowBackend
-            tf_backend = TensorFlowBackend(
-                self, data, eval_kwargs=eval_kwargs, **backend_options
+            backend = TensorFlowBackend(
+                new_model, data, eval_kwargs=eval_kwargs, **backend_options
                 )
-            tf_backend._fit(
-                data, eval_kwargs=eval_kwargs, **fitter_options
-                )
-            return tf_backend
+
 
         else:
             raise NotImplementedError(f"Unrecognized backend: {backend}.")
+
+        fit_results = backend._fit(
+            data, eval_kwargs=eval_kwargs, **fitter_options
+            )
+        new_model.backend = backend
+        new_model.results = fit_results
+
+        return new_model
+
             
 
     def score(self, prediction, target):
@@ -972,9 +972,6 @@ class Model:
         if meta is None: meta = self.meta
         model = Model(layers=layers, name=name, meta=meta)
 
-        raise NotImplementedError(
-            "Still need to implement Layer.copy(), Phi.copy(), Parameter.copy()"
-            )
         return model
 
     # Placed this code next to `_LayerDict` for easier cross-checking of code

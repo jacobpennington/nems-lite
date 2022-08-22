@@ -1,10 +1,10 @@
+import numpy as np
 
 
 class Backend:
     """TODO: docs"""
 
     def __init__(self, nems_model, data, eval_kwargs=None, **backend_options):
-        # TODO: store copy of nems_model instead.
         self.nems_model = nems_model
         if eval_kwargs is None: eval_kwargs = {}
         self.model = self._build(
@@ -42,11 +42,13 @@ class Backend:
 
 
 class FitResults:
+    """TODO: docs"""
 
     def __init__(self, initial_parameters, final_parameters, initial_error,
                  final_error, backend_name, **misc):
         self.initial_error = initial_error
         self.final_error = final_error
+        self.n_parameters = np.array(initial_parameters).size
         self.n_parameters_changed = sum(initial_parameters != final_parameters)
         self.backend = backend_name
         self.misc = misc

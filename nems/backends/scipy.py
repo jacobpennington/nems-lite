@@ -1,7 +1,7 @@
 import scipy.optimize
 
 from nems.metrics import get_metric
-from .base import Backend
+from .base import Backend, FitResults
 
 
 class SciPyBackend(Backend):
@@ -69,10 +69,16 @@ class SciPyBackend(Backend):
         )
         self.model.set_parameter_vector(fit_result.x)
         
-        # TODO: Should this return some kind of FitResult type object?
-        #       I.e. similar to SciPy fit result but a consistent wrapper
-        #       for reporting fit results from any backend.
+        initial_parameters = wrapper.initial_parameters
+        final_parameters = wrapper.model.get_parameter_vector()
+        initial_error = wrapper(initial_parameters)
+        final_error = wrapper(final_parameters)
+        nems_fit_results = FitResults(
+            initial_parameters, final_parameters, initial_error, final_error,
+            backend_name='scipy', scipy_fit_result=fit_result
+        )
 
+        return nems_fit_results
 
     def predict(self, input, eval_kwargs=None):
         if eval_kwargs is None: eval_kwargs = {}

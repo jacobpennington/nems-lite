@@ -3,7 +3,7 @@ import tensorflow as tf
 import tensorflow.keras as keras
 from tensorflow.keras import Input
 
-from ..base import Backend
+from ..base import Backend, FitResults
 
 
 class TensorFlowBackend(Backend):
@@ -93,7 +93,7 @@ class TensorFlowBackend(Backend):
 
         # NOTE: expects arrays in data to already be formatted as shape
         #       (S,T,C) instead of (T,C), same for target as well.
-
+        initial_parameters = self.nems_model.get_parameter_vector()
         final_layer = self.nems_model.layers[-1].name
         self.model.compile(
             optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
@@ -106,7 +106,7 @@ class TensorFlowBackend(Backend):
         #       it has the information about which layer generates which output.
         input = data.inputs
         target = list(data.targets.values())[0]
-        self.model.fit(
+        history = self.model.fit(
             input, {final_layer: target}, epochs=epochs
         )
 
@@ -119,8 +119,15 @@ class TensorFlowBackend(Backend):
         for nems_layer, tf_layer in layer_iter:
             nems_layer.set_parameter_values(tf_layer.weights_to_values())
 
-        # TODO: more information here.
-        print('TF model fit finished, parameters have been updated.')
+        final_parameters = self.nems_model.get_parameter_vector()
+        initial_error = 'TODO'  # TODO
+        final_error = history['loss'][-1]
+        nems_fit_results = FitResults(
+            initial_parameters, final_parameters, initial_error, final_error,
+            backend_name='scipy',
+        )
+
+        return nems_fit_results
 
     def predict(self, input, eval_kwargs=None):
         return self.model.predict(input)
