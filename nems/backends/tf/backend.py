@@ -7,17 +7,25 @@ from ..base import Backend
 
 
 class TensorFlowBackend(Backend):
-    def __init__(self, nems_model, input, eval_kwargs=None, **backend_options):
-        super().__init__()
+    def __init__(self, nems_model, data, eval_kwargs=None, **backend_options):
+        super().__init__(nems_model, data, eval_kwargs=eval_kwargs,
+                         **backend_options)
 
-    def build(self, input, eval_kwargs=None):
+    def _build(self, data, eval_kwargs=None):
         # TODO: what backend options to accept?
 
         batch_size = eval_kwargs.get('batch_size', None)
+        if batch_size is not None:
+            raise NotImplementedError(
+                "tf.tensordot is failing for multiple batches b/c the axis "
+                "numbers shift. Need to fix that before this will work."
+            )
+
         data_maps = self.nems_model.get_data_maps()
         tf_kwargs = {}  # TODO
         tf_layers = [layer.as_tensorflow_layer(**tf_kwargs)
-                        for layer in self.layers]
+                        for layer in self.nems_model.layers]
+        input = data.inputs
 
         # Convert inputs to TensorFlow format
         tf_input_dict = {}
@@ -76,23 +84,28 @@ class TensorFlowBackend(Backend):
 
         return model
 
-    def fit(self, input, target, eval_kwargs=None, learning_rate=0.001,
-            epochs=1):
+    def _fit(self, data, eval_kwargs=None, learning_rate=0.001, epochs=1):
+
+        # TODO: anything from eval_kwargs actually needed here? I think all
+        #       of the relevant options are used in _build.
 
         # TODO: support more keys in `fitter_options`.
 
         # NOTE: expects arrays in data to already be formatted as shape
         #       (S,T,C) instead of (T,C), same for target as well.
 
-        # TODO: This assumes a single output (like our usual models).
-        #       Need to tweak this to be able to fit outputs from multiple
-        #       layers.
-        final_layer = self.layers[-1].name
+        final_layer = self.nems_model.layers[-1].name
         self.model.compile(
             optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
             loss={final_layer: keras.losses.MeanSquaredError()}
         )
 
+        # TODO: This assumes a single output (like our usual models).
+        #       Need to tweak this to be able to fit outputs from multiple
+        #       layers. _build would need to establish a mapping I guess, since
+        #       it has the information about which layer generates which output.
+        input = data.inputs
+        target = list(data.targets.values())[0]
         self.model.fit(
             input, {final_layer: target}, epochs=epochs
         )
@@ -108,3 +121,6 @@ class TensorFlowBackend(Backend):
 
         # TODO: more information here.
         print('TF model fit finished, parameters have been updated.')
+
+    def predict(self, input, eval_kwargs=None):
+        return self.model.predict(input)

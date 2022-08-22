@@ -3,11 +3,9 @@ import textwrap
 import itertools
 
 import numpy as np
-import scipy.optimize
 
 from nems.registry import keyword_lib
-from nems.metrics import get_metric
-from nems.backends import SciPyBackend, TensorFlowBackend
+from nems.backends.scipy import SciPyBackend
 from nems.visualization import plot_model
 # Temporarily import layers to make sure they're registered in keyword_lib
 import nems.layers  
@@ -17,15 +15,17 @@ del nems.layers
 class Model:
     """TODO: docstring."""
 
-    def __init__(self, layers=None, name=None):
+    def __init__(self, layers=None, name=None, meta=None):
         """TODO: docstring"""
         self._layers = {}  #  layer.name : layer obj, increment on clashes
         if layers is not None:
             self.add_layers(*layers)
         self.name = name if name is not None else 'UnnamedModel'
-        # TODO: store optional metadata from kwarg
-        # TODO: save metadata to json (and load)
-        self.meta = {}
+        # Store optional metadata. This is a generic dictionary for information
+        # about the model. Any type can be stored here as long as it can be
+        # encoded by `json.dumps`.
+        if meta is None: meta = {}
+        self.meta = meta
 
     @property
     def layers(self):
@@ -54,6 +54,11 @@ class Model:
         nems.layers.base.Layer
         
         """
+
+        # TODO: need to track name, layer lists instead? Apparently dictionaries
+        #       aren't guaranteed to keep the same order. Hasn't caused problems
+        #       so far, but...
+
         for layer in layers:
             layer.model = self  # each layer gets a reference to parent Model
             key = layer.name
@@ -81,7 +86,8 @@ class Model:
 
     def evaluate(self, input, state=None, input_name=None, state_name=None,
                  output_name=None, n=None, return_full_data=True,
-                 use_existing_maps=False, batch_size=0, permute_batches=False):
+                 as_dataset=False, use_existing_maps=False, batch_size=0,
+                 permute_batches=False):
         """Transform input(s) by invoking `Layer.evaluate` for each Layer.
 
         Evaluation encapsulates three steps:
@@ -140,6 +146,8 @@ class Model:
         return_full_data : bool; default=True
             If True, return a dictionary containing all input data and all
             uniquely-keyed Layer outputs.
+        as_dataset : bool; default=False.
+            Return data in a DataSet instead of a dictionary.
         use_existing_maps : bool; default=False.
             If True, existing DataMaps will be used rather than generating a
             new one for each Layer. This is disabled by default for direct
@@ -183,52 +191,46 @@ class Model:
             # Input should already be a properly formatted DataSet
             # (for example, passed by Model.fit)
             data = input
-        # if batch_size == 0:
-        #     data = data.prepend_samples()
-        #     _batch_size = 1
-        # else:
-        #     _batch_size = batch_size
 
-        # batch_out = []
-        # batches = data.as_batches(_batch_size, permute=permute_batches)
-        # for batch in batches:
-        #     samples = batch.as_samples()
-        #     sample_out = []
-        #     for sample in samples:
-        #         data_generator = self.generate_layer_data(
-        #             sample, use_existing_maps=use_existing_maps,
-        #         )
-        #         if n is not None: n -= 1
-        #         else: n = len(self.layers)-1
-        #         # Get data for the final layer only, to reduce memory use.
-        #         layer_data = self.get_layer_data(data_generator, n, n)[-1]
-        #         sample_out.append(layer_data['data'].prepend_samples())
-        #     batch_out.extend(sample_out)
-        batch_out = list(self.generate_batch_data(
-            input, state=state, input_name=input_name, state_name=state_name,
-            output_name=output_name, n=n, batch_size=batch_size,
-            permute_batches=permute_batches, use_existing_maps=use_existing_maps
-            ))
         if batch_size == 0:
-            # Only one batch, remove prepended sample dimension
-            all_outputs = batch_out[0].squeeze_samples().outputs
+            # No reason to do any batching, data should be formatted as
+            # (T, ..., N), where T is the number of time bins and N is the
+            # number of output channels.
+            data_generator = self.generate_layer_data(
+                                data, use_existing_maps=use_existing_maps,
+                                )
+            data = self.get_layer_data(data_generator, n, n)[-1]['data']
+
         else:
+            # Data should be formatted as (S, T, ..., N), where S is the number
+            # of samples/trials.
+
+            batch_out = list(self.generate_batch_data(
+                input, state=state, input_name=input_name, state_name=state_name,
+                output_name=output_name, n=n, batch_size=batch_size,
+                permute_batches=permute_batches, use_existing_maps=use_existing_maps
+                ))
             all_outputs = DataSet.concatenate_sample_outputs(batch_out)
-        # Inputs (and any targets) should not have changed
-        data.outputs = all_outputs
+            # Inputs (and any targets) should not have changed
+            data.outputs = all_outputs
 
         if not return_full_data:
             out = data.outputs
             if len(out) == 1:
                 out = list(out.values())[0]
         else:
-            out = data.as_dict()
+            if as_dataset:
+                out = data
+            else:
+                # Default option: return all data in a dictionary
+                out = data.as_dict()
 
         return out
 
     def generate_batch_data(self, input, n=None, batch_size=0,
                             permute_batches=False, use_existing_maps=False,
                             **eval_kwargs):
+    
         if not isinstance(input, DataSet):
             # Package arrays and/or dicts in a DataSet
             data = DataSet(input=input, **eval_kwargs)
@@ -236,13 +238,11 @@ class Model:
             # Input should already be a properly formatted DataSet
             # (for example, passed by Model.fit)
             data = input
-        if batch_size == 0:
-            data = data.prepend_samples()
-            _batch_size = 1
-        else:
-            _batch_size = batch_size
 
-        batches = data.as_batches(_batch_size, permute=permute_batches)
+        if n is not None: n -= 1
+        else: n = len(self.layers)-1
+
+        batches = data.as_batches(batch_size, permute=permute_batches)
         for batch in batches:
             samples = batch.as_samples()
             sample_out = []
@@ -250,8 +250,7 @@ class Model:
                 data_generator = self.generate_layer_data(
                     sample, use_existing_maps=use_existing_maps,
                 )
-                if n is not None: n -= 1
-                else: n = len(self.layers)-1
+
                 # Get data for the final layer only, to reduce memory use.
                 layer_data = self.get_layer_data(data_generator, n, n)[-1]
                 sample_out.append(layer_data['data'].prepend_samples())
@@ -355,7 +354,6 @@ class Model:
                 yield layer_data
 
         # On final layer, only update data after evaluation
-        #self._finalize_data(layer, data, last_output=o, **eval_kwargs)
         data.finalize_data(final_layer=layer)
         if copy_data:
             layer_data['data'] = copy.deepcopy(data)
@@ -521,8 +519,7 @@ class Model:
     #       separate module (inside a new `base` directory), with simple
     #       wrappers in Model as the public-facing API.
     def fit(self, input, target, target_name=None, backend='scipy',
-            cost_function='mse', fitter_options=None, backend_options=None,
-            **eval_kwargs):
+            fitter_options=None, backend_options=None, **eval_kwargs):
         """Optimize model parameters to match `Model.predict(input)` to target.
         
         TODO: where do jackknife indices fit in? possibly use segmentor idea
@@ -556,11 +553,6 @@ class Model:
             If 'scipy' : Use `scipy.optimize.minimize(method='L-BFGS-B')`.
             If 'tf'    : Use TensorFlow. Also aliased as 'tensorflow'.
             TODO: any other options we want to support?
-        cost_function : str or func; default='mse'
-            Specifies which metric to use for computing error while fitting.
-            If str  : Invoke `nems.metrics.get_metric(str)`.
-            If func : Use this function to compute errors. Should accept two
-                      array arguments and return float. 
         fitter_options : dict; optional.
             Keyword arguments to pass on to the fitter. For a list of valid
             options, see documentation for `scipy.optimize.minimize`
@@ -574,15 +566,11 @@ class Model:
 
         if fitter_options is None: fitter_options = {}
         if backend_options is None: backend_options = {}
-        if isinstance(cost_function, str):
-            # Convert string reference to metric function
-            cost_function = get_metric(cost_function)
 
         # Initialize DataSet
         data = DataSet(
             input, target=target, target_name=target_name, **eval_kwargs
             )
-        eval_kwargs['skip_initialization'] = True
         # Evaluate once prior to fetching backend, to ensure all DataMaps are
         # up to date and include outputs.
         _ = self.evaluate(
@@ -602,17 +590,18 @@ class Model:
             scipy_backend = SciPyBackend(
                 self, data, eval_kwargs=eval_kwargs, **backend_options
                 )
-            scipy_backend.fit(
-                input, target, eval_kwargs=eval_kwargs, **fitter_options
+            scipy_backend._fit(
+                data, eval_kwargs=eval_kwargs, **fitter_options
                 )
             return scipy_backend
 
         elif (backend == 'tf') or (backend == 'tensorflow'):
+            from nems.backends.tf import TensorFlowBackend
             tf_backend = TensorFlowBackend(
-                self, input, eval_kwargs=eval_kwargs, **backend_options
+                self, data, eval_kwargs=eval_kwargs, **backend_options
                 )
-            tf_backend.fit(
-                input, target, eval_kwargs=eval_kwargs, **fitter_options
+            tf_backend._fit(
+                data, eval_kwargs=eval_kwargs, **fitter_options
                 )
             return tf_backend
 
@@ -954,6 +943,7 @@ class Model:
         data = {
             'layers': list(self._layers.values()),
             'name': self.name,
+            'meta': self.meta
             }
         
         return data
@@ -972,7 +962,19 @@ class Model:
 
         """
         # TODO: any other metadata?
-        model = cls(layers=json['layers'], name=json['name'])
+        model = cls(layers=json['layers'], name=json['name'], meta=json['meta'])
+        return model
+
+    def copy(self, name=None, meta=None):
+        """TODO: docs."""
+        layers = [layer.copy() for layer in self.layers]
+        if name is None: name = self.name
+        if meta is None: meta = self.meta
+        model = Model(layers=layers, name=name, meta=meta)
+
+        raise NotImplementedError(
+            "Still need to implement Layer.copy(), Phi.copy(), Parameter.copy()"
+            )
         return model
 
     # Placed this code next to `_LayerDict` for easier cross-checking of code
@@ -1119,10 +1121,8 @@ class DataSet:
         # TODO: how to use dtype
         self.initialize_data(input, state, target)  # other kwargs too
 
-    def initialize_data(self, input, state, target, **eval_kwargs):
+    def initialize_data(self, input, state, target):
         """TODO: docs"""
-        # NOTE: additional kwargs ignored for convenience, since initialize
-        #       and finalize are both related to Model.evaluate.
 
         # Initialize inputs
         if isinstance(input, (np.ndarray, list)):
@@ -1160,16 +1160,14 @@ class DataSet:
         # Always save output to _last_output for use by Model.evaluate
         self.outputs['_last_output'] = output
 
-    def finalize_data(self, final_layer, **eval_kwargs):
+    def finalize_data(self, final_layer):
         """TODO: docs"""
-        # NOTE: additional kwargs ignored for convenience, since initialize
-        #       and finalize are both related to Model.evaluate.
         # Re-name last output if keys not specified by Layer
         final_output = self.outputs.pop('_last_output')
         if final_layer.output is None:
-            self.outputs[self.output_name] = final_output
             # Re-map `data_map.out` so that it reflects `output_name`.
             final_layer.data_map.map_outputs(final_output, self.output_name)
+            self.save_output(final_layer.data_map.out, final_output)
 
     def as_broadcasted_samples(self):
         """TODO: docs"""
@@ -1180,29 +1178,35 @@ class DataSet:
         #       changes to
         #       input(10, 100, 5) ... (rest same)
         #       without duplicating memory.
-        # NOTE: Broadcasting only happens *within* each dict, i.e. inputs
-        #       will not be broadcast to match targets or vise-versa.
-        #       That shouldn't be necessary, since cost functions will handle
-        #       broadcasting between inputs & targets separately.
 
-        inputs = self._broadcast_dict(self.inputs)
-        outputs = self._broadcast_dict(self.outputs)
-        targets = self._broadcast_dict(self.targets)
+        # In case inputs/outputs and targets have different numbers of samples,
+        # broadcast within each category first. 
+        inputs = self._broadcast_dict(self.inputs, self.inputs, same=True)
+        outputs = self._broadcast_dict(self.outputs, self.outputs, same=True)
+        targets = self._broadcast_dict(self.targets, self.targets, same=True)
+
+        # Then broadcast each category to the others.
+        inputs = self._broadcast_dict(inputs, {**outputs, **targets})
+        outputs = self._broadcast_dict(outputs, {**inputs, **targets})
+        targets = self._broadcast_dict(targets, {**inputs, **outputs})
 
         return self.modified_copy(inputs, outputs, targets)
 
+    # TODO: maybe document this as a public method, or move to general utilities?
+    #       Could be useful elsewhere.
     @staticmethod
-    def _broadcast_dict(d):
+    def _broadcast_dict(d1, d2, same=False):
         """TODO: docs, internal for broadcast_samples."""
-        if len(d) < 2:
+        if (len(d1) == 0) or (len(d1) == 1 and same) or (len(d2) == 0):
             # Nothing to broadcast to
-            new_d = d.copy()
+            new_d = d1.copy()
         else:
             new_d = {}
-            for k, v in d.items():
-                temp = d.copy()
-                temp.pop(k)  # compare against all other arrays
-                for k2, v2 in temp.items():
+            for k, v in d1.items():
+                temp = d2.copy()
+                if k in temp:
+                    temp.pop(k)  # don't need to broadcast to self
+                for v2 in temp.values():
                     try:
                         # Only try to broadcast to the other array's first dim
                         # (i.e. number of samples). If v.shape = (1, ...) and
@@ -1214,14 +1218,11 @@ class DataSet:
                         # Incompatible shape (either both arrays have multiple
                         # samples or v has multiple and v2 has 1).
                         new_d[k] = v
-        
+
         return new_d
 
     def as_batches(self, batch_size=None, permute=True):
         """TODO: docs"""
-        # TODO: per SVD request, also support passing in list directly
-        #       (e.g. if data is already a list, assume it has been split
-        #        and that each array in the list is one batch).
 
         # Split data into batches along first axis. Should end up with a list
         # of arrays with shape (B, T, N), where B is `batch_size` (i.e. number
@@ -1234,6 +1235,10 @@ class DataSet:
         #       of samples doesn't divide evenly. Need to set up cost to
         #       account for that (i.e. can't average across batches on arrays,
         #       but could average across batches on already-computed costs).
+        # TODO: This handles cases of 1 sample -> many samples or vise-versa,
+        #       but do we want to support n samples -> m samples? Would have
+        #       to do some kind of tiling that may have side-effects that I'm
+        #       not thinking of, and I'm not sure if this would be useful.
         d = self.as_broadcasted_samples()
 
         batched_inputs, batched_outputs, batched_targets = [
@@ -1262,6 +1267,7 @@ class DataSet:
 
     def _arrays_to_batches(self, data, batch_size):
         """TODO: docs, internal for as_batches."""
+
         if (batch_size is None) and (len(data) > 0):
             # Assume sample dimension exists, set batch_size to force 1 batch
             batch_size = list(data.values())[0].shape[0]
@@ -1317,6 +1323,9 @@ class DataSet:
             )
         data.outputs = outputs
         return data
+
+    def copy(self):
+        return self.modified_copy(self.inputs, self.outputs, self.targets)
 
     def apply(self, fn, allow_copies=False):
         """TODO: docs. Maps {k: v} -> {k: fn(v)} for all k, v."""
