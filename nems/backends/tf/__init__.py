@@ -2,5 +2,5 @@
 
 """
 
-from .model import build_model
+from .backend import TensorFlowBackend
 from .layer_tools import NemsKerasLayer, Bounds

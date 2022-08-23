@@ -205,7 +205,7 @@ class DoubleExponential(StaticNonlinearity):
     def as_tensorflow_layer(self, **kwargs):
         """TODO: docs"""
         import tensorflow as tf
-        from nems.tf import NemsKerasLayer
+        from nems.backends.tf import NemsKerasLayer
 
         class DoubleExponentialTF(NemsKerasLayer):
             def call(self, inputs):
@@ -316,7 +316,7 @@ class RectifiedLinear(StaticNonlinearity):
     def as_tensorflow_layer(self, **kwargs):
         """TODO: docs"""
         import tensorflow as tf
-        from nems.tf import NemsKerasLayer
+        from nems.backends.tf import NemsKerasLayer
 
         class RectifiedLinearTF(NemsKerasLayer):
             def call(self, inputs):

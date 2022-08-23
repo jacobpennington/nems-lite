@@ -96,7 +96,6 @@ class WeightChannels(Layer):
             output = np.tensordot(input, self.coefficients, axes=(1, 0))
         except ValueError as e:
             # Check for dimension swap, to give more informative error message.
-            #if 'mismatch in its core dimension' in str(e):  # for @
             if 'shape-mismatch for sum' in str(e):
                 raise ShapeError(self, input=input.shape,
                                  coefficients=self.coefficients.shape)
@@ -141,7 +140,7 @@ class WeightChannels(Layer):
     def as_tensorflow_layer(self, **kwargs):
         """TODO: docs"""
         import tensorflow as tf
-        from nems.tf import NemsKerasLayer
+        from nems.backends.tf import NemsKerasLayer
 
         class WeightChannelsTF(NemsKerasLayer):
             @tf.function
@@ -257,7 +256,7 @@ class GaussianWeightChannels(WeightChannels):
     def as_tensorflow_layer(self, **kwargs):
         """TODO: docs"""
         import tensorflow as tf
-        from nems.tf import NemsKerasLayer
+        from nems.backends.tf import NemsKerasLayer
 
         # TODO: Ask SVD about this kludge in old NEMS code. Is this still needed?
         # If so, explain: I think this was to keep gradient from "blowing up"?

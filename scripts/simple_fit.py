@@ -73,11 +73,6 @@ model.fit(input=spectrogram, target=response, state=pupil_size, backend='scipy')
 # Predict the response to the stimulus spectrogram using the fitted model.
 prediction = model.predict(spectrogram, state=pupil_size, backend='scipy')
 
-# As mentioned, 'scipy' is already the default backend. However, if we wanted to
-# set a different backend specified in the `model.fit` documentation, we can
-# do the following so that we don't need to keep specifying it.
-model.default_backend = 'scipy'
-
 
 # Some models will need more data than input, output, and state. In that case,
 # the fit process requires a couple of extra steps. First, we'll define some
@@ -117,7 +112,8 @@ stim, resp, pupil, state = my_complicated_data_loader('/path/data.csv')
 # For a model that uses multiple inputs, we package the input data into
 # a dictionary. This way, layers can specify which inputs they need using the
 # assigned keys.
-data = {'stimulus': stim, 'pupil': pupil, 'state': state, 'response': resp}
+input = {'stimulus': stim, 'pupil': pupil, 'state': state}
+target = resp
 
 
 # Now we build the Model as before, but we can specify which Layer receives
@@ -162,8 +158,8 @@ model = Model(layers=layers)
 # variables. The necessary inputs are already specified in the layers, so we
 # only need to tell the model what data to match its output to
 # (`resp` in this case, stored as `data['response']`).
-model.fit(input=data, target_name='response')
-prediction = model.predict(data)
+model.fit(input=input, target=resp)
+prediction = model.predict(input)
 
 
 # Instead of specifying a custom model, we can also use a pre-built model.

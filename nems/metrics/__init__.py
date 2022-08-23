@@ -2,7 +2,8 @@
 
 Score model outputs by MSE, likelihood, prediction correlation, etc.
 Measure equivalence, sparsity, and other properties of model predictions and/or
-recorded neural responses.
+recorded neural responses. These can also be used as cost functions for the
+default SciPy backend.
 
 # TODO: These contents don't all exist yet, sketching this out based on
 #       the strfy proposal document.
@@ -17,6 +18,7 @@ Contents
 
 from .mse import mse, nmse
 from .correlation import correlation, noise_corrected_r
+
 
 
 metric_nicknames = {'corr': correlation, 'r_ceiling': noise_corrected_r}

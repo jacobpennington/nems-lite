@@ -9,6 +9,7 @@ import numpy as np
 from nems import Model, load_recording
 from nems.layers import WeightChannels, FIR, LevelShift, DoubleExponential
 
+# TODO: Do we still want to support this? Not currently implemented.
 
 # Sometimes we might want to insert or delete individual layers without
 # building and fitting a new Model from scratch
