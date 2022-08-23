@@ -8,7 +8,7 @@ from nems.registry import keyword_lib
 from nems.backends import get_backend
 from nems.visualization import plot_model
 # Temporarily import layers to make sure they're registered in keyword_lib
-import nems.layers  
+import nems.layers
 del nems.layers
 
 
@@ -925,17 +925,16 @@ class Model:
 
         """
         # TODO: any other metadata?
-        import json
         data = {
-            'layers': [l.to_json() for l in self.layers],
+            'layers': list(self._layers.values()),
             'name': self.name,
             'meta': self.meta
-            }
-        
-        return json.dumps(data)
+        }
+
+        return data
 
     @classmethod
-    def from_json(cls, json_string):
+    def from_json(cls, json):
         """Decode a Model from a dictionary.
 
         Returns
@@ -948,9 +947,6 @@ class Model:
 
         """
         # TODO: any other metadata?
-        import json
-        model_dict = json.loads(json_string)
-
         model = cls(layers=json['layers'], name=json['name'], meta=json['meta'])
         return model
 
