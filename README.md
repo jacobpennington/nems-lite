@@ -14,9 +14,9 @@ for `numpy` (which uses `openblas` instead of `mkl`):
 (https://github.com/conda-forge/numpy-feedstock/issues/84)
 
 Coming soon, roughly in order of priority:
-* Fix cost function behavior in Model.fit to work with both lists and arrays, and set up (non-TF) batched optimization.
+* Finish/clean up docs for core components.
 * Convert dev_notebooks to unit tests where appropriate (& automatic testing using Travis, like nems0).
-* Finish/clean up docs and set up readthedocs.
+* Set up readthedocs.
 * Add more Layers from nems0.
 * Add core pre-processing and scoring from nems0.
 * Try Numba for Layer.evaluate and cost functions.
