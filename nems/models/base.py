@@ -5,7 +5,7 @@ import itertools
 import numpy as np
 
 from nems.registry import keyword_lib
-from nems.backends.scipy import SciPyBackend
+from nems.backends import get_backend
 from nems.visualization import plot_model
 # Temporarily import layers to make sure they're registered in keyword_lib
 import nems.layers  
@@ -26,6 +26,9 @@ class Model:
         # encoded by `json.dumps`.
         if meta is None: meta = {}
         self.meta = meta
+
+        self.results = None   # holds FitResults after Model.fit()
+        self.backend = None # holds all previous Backends (1 per key)
 
     @property
     def layers(self):
@@ -514,10 +517,6 @@ class Model:
         return self.evaluate(input, return_full_data=return_full_data,
                              **eval_kwargs)
 
-
-    # TODO: Move the backend implementations and any related subroutines to a
-    #       separate module (inside a new `base` directory), with simple
-    #       wrappers in Model as the public-facing API.
     def fit(self, input, target, target_name=None, backend='scipy',
             fitter_options=None, backend_options=None, **eval_kwargs):
         """Optimize model parameters to match `Model.predict(input)` to target.
@@ -576,38 +575,24 @@ class Model:
         _ = self.evaluate(
             input, use_existing_maps=False, **eval_kwargs
             )
-        
-        # TODO: convert this to something like
-        #       backend = _lookup_backend(backend)
-        #       backend.fit(...)
-        #       return backend
-        #       (i.e. no if/else loop, implement elsewhere)
 
-        # new_model = self.copy()
-        if backend == 'scipy':
-            backend = SciPyBackend(
-                new_model, data, eval_kwargs=eval_kwargs, **backend_options
-                )
-
-        elif (backend == 'tf') or (backend == 'tensorflow'):
-            from nems.backends.tf import TensorFlowBackend
-            backend = TensorFlowBackend(
-                new_model, data, eval_kwargs=eval_kwargs, **backend_options
-                )
-
-
-        else:
-            raise NotImplementedError(f"Unrecognized backend: {backend}.")
-
-        fit_results = backend._fit(
+        # Update parameters of a copy, not the original model.
+        new_model = copy.deepcopy(self)
+        # Get Backend sublass.
+        backend_class = get_backend(name=backend)
+        # Build backend model.
+        backend_obj = backend_class(new_model, data, eval_kwargs=eval_kwargs,
+                                    **backend_options)
+        # Fit backend, save results. This should update the parameters of
+        # `new_model` as well.
+        fit_results = backend_obj._fit(
             data, eval_kwargs=eval_kwargs, **fitter_options
             )
-        new_model.backend = backend
+        new_model.backend = backend_obj
         new_model.results = fit_results
 
         return new_model
 
-            
 
     def score(self, prediction, target):
         # TODO: this should point to an independent utility function, but
@@ -965,15 +950,6 @@ class Model:
         model = cls(layers=json['layers'], name=json['name'], meta=json['meta'])
         return model
 
-    def copy(self, name=None, meta=None):
-        """TODO: docs."""
-        layers = [layer.copy() for layer in self.layers]
-        if name is None: name = self.name
-        if meta is None: meta = self.meta
-        model = Model(layers=layers, name=name, meta=meta)
-
-        return model
-
     # Placed this code next to `_LayerDict` for easier cross-checking of code
     def __getitem__(self, key):
         return self.layers[key]
@@ -1160,11 +1136,12 @@ class DataSet:
     def finalize_data(self, final_layer):
         """TODO: docs"""
         # Re-name last output if keys not specified by Layer
-        final_output = self.outputs.pop('_last_output')
+        final_output = self.outputs['_last_output']
         if final_layer.output is None:
             # Re-map `data_map.out` so that it reflects `output_name`.
             final_layer.data_map.map_outputs(final_output, self.output_name)
             self.save_output(final_layer.data_map.out, final_output)
+        _ = self.outputs.pop('_last_output')
 
     def as_broadcasted_samples(self):
         """TODO: docs"""

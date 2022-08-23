@@ -1,3 +1,5 @@
+import textwrap
+
 import numpy as np
 
 
@@ -24,13 +26,14 @@ class Backend:
     def _fit(self, data, *args, eval_kwargs=None, **kwargs):
         """Call _model.fit() or equivalent.
         
-        This method should expect `data` to be a DataSet.
+        This method should expect `data` to be a DataSet, and should update
+        the parameters of both `self.model` and `self.nems_model`.
         TODO: rewrite doc
         
         """
         raise NotImplementedError
 
-    def predict(self, input, *args, eval_kwargs=None, **kwargs):
+    def predict(self, input, **eval_kwargs):
         """Call _model.predict() or equivalent.
         
         This should expect `input` in the same format as
@@ -46,10 +49,14 @@ class FitResults:
 
     def __init__(self, initial_parameters, final_parameters, initial_error,
                  final_error, backend_name, **misc):
+        initial_parameters = np.array(initial_parameters)
+        final_parameters = np.array(final_parameters)
         self.initial_error = initial_error
         self.final_error = final_error
-        self.n_parameters = np.array(initial_parameters).size
-        self.n_parameters_changed = sum(initial_parameters != final_parameters)
+        self.n_parameters = initial_parameters.size
+        self.n_parameters_changed = np.sum(
+            (initial_parameters != final_parameters)
+            )
         self.backend = backend_name
         self.misc = misc
 
@@ -61,9 +68,10 @@ class FitResults:
         string += "="*11 + "\n"
         for k, v in attrs.items():
             string += f"{k}: {v}\n"
-        string += '-'*11 + "\n"
         string += f"Misc:\n"
-        string += f"{misc}\n"
+        for k, v in misc.items():
+            string += '-'*11 + '\n'
+            string += f'{k}:\n{v}\n'
         string += "="*11
 
         return string

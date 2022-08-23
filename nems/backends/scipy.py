@@ -75,14 +75,13 @@ class SciPyBackend(Backend):
         final_error = wrapper(final_parameters)
         nems_fit_results = FitResults(
             initial_parameters, final_parameters, initial_error, final_error,
-            backend_name='scipy', scipy_fit_result=fit_result
+            backend_name='SciPy', scipy_fit_result=fit_result
         )
 
         return nems_fit_results
 
-    def predict(self, input, eval_kwargs=None):
-        if eval_kwargs is None: eval_kwargs = {}
-        return self.nems_model.predict(input, **eval_kwargs)
+    def predict(self, input, **eval_kwargs):
+        self.nems_model.predict(input, **eval_kwargs)
 
 
 class FitWrapper:

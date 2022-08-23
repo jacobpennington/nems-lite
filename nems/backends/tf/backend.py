@@ -121,13 +121,14 @@ class TensorFlowBackend(Backend):
 
         final_parameters = self.nems_model.get_parameter_vector()
         initial_error = 'TODO'  # TODO
-        final_error = history['loss'][-1]
+        final_error = history.history['loss'][-1]
         nems_fit_results = FitResults(
             initial_parameters, final_parameters, initial_error, final_error,
-            backend_name='scipy',
+            backend_name='TensorFlow',
         )
 
         return nems_fit_results
 
-    def predict(self, input, eval_kwargs=None):
+    def predict(self, input, **eval_kwargs):
+        # TODO: Any kwargs needed here?
         return self.model.predict(input)
