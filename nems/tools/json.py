@@ -59,6 +59,7 @@ array([1, 2, 3, 4])
 
 """
 
+import os
 import json
 import inspect
 from functools import partialmethod
@@ -144,3 +145,37 @@ def nems_to_json(obj):
 def nems_from_json(obj):
     """Decode json `obj`. Supports ndarray and NEMS objects."""
     return json.loads(obj, cls=NEMSDecoder)
+
+
+def save_model(model, filepath):
+    """
+    :param model: NEMS model object
+    :param filepath: path+filename string
+    :return:
+    """
+    data = nems_to_json(model)
+    dirpath = os.path.dirname(filepath)
+
+    if not os.path.exists(dirpath):
+        os.makedirs(dirpath, mode=0o0777)
+    with open(filepath, mode='w+') as f:
+        f.write(data)
+        f.close()
+        try:
+            os.chmod(filepath, 0o666)
+        except PermissionError:
+            # File should already exist with the correct permissions
+            pass
+
+def load_model(filepath):
+    """
+    :param filepath: location of saved model
+    :return: model: NEMS model object
+    """
+    with open(filepath, mode='r') as f:
+        data = f.read()
+        # print(data)
+
+    model = nems_from_json(data)
+
+    return model

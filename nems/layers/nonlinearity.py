@@ -152,12 +152,16 @@ class DoubleExponential(StaticNonlinearity):
         # TODO: explain choices for priors.
         zero = np.zeros(shape=self.shape)
         one = np.ones(shape=self.shape)
+        # model.layers[-1]['shift']=[0.]
+        # model.layers[-1]['kappa']=[1.]
+        # model.layers[-1]['amplitude']=[1.]
+        # model.layers[-1]['base']=[0.]
         phi = Phi(
-            Parameter('base', shape=self.shape, prior=Normal(zero, one)),
+            Parameter('base', shape=self.shape, prior=Normal(zero, one/5)),
             Parameter('amplitude', shape=self.shape,
-                      prior=Normal(5*zero, 1.5*one)),
-            Parameter('shift', shape=self.shape, prior=Normal(zero, one)),
-            Parameter('kappa', shape=self.shape, prior=Normal(one, 10*one))
+                      prior=Normal(one, one/5)),
+            Parameter('shift', shape=self.shape, prior=Normal(zero, one/5)),
+            Parameter('kappa', shape=self.shape, prior=Normal(one, one/5))
             )
         return phi
 

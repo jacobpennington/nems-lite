@@ -1045,8 +1045,8 @@ class Model:
             'layers': list(self._layers.values()),
             'name': self.name,
             'meta': self.meta
-            }
-        
+        }
+
         return data
 
     @classmethod
