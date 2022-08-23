@@ -1174,19 +1174,21 @@ class Model:
 
         """
         # TODO: any other metadata?
+        import json
         data = {
-            'layers': list(self._layers.values()),
+            'layers': [l.to_json() for l in self.layers],
             'name': self.name,
             'defaults': {
                 'input': self.default_input, 'output': self.default_output, 
                 'state': self.default_state, 'backend': self.default_backend
-                }
+                },
+            'meta': self.meta
             }
         
-        return data
+        return json.dumps(data)
 
     @classmethod
-    def from_json(cls, json):
+    def from_json(cls, json_string):
         """Decode a Model from a dictionary.
 
         Returns
@@ -1199,9 +1201,15 @@ class Model:
 
         """
         # TODO: any other metadata?
-        model = cls(layers=json['layers'], name=json['name'])
-        for k, v in json['defaults'].items():
+        import json
+        model_dict = json.loads(json_string)
+
+        model = cls(layers=model_dict['layers'], name=model_dict['name'])
+        for k, v in model_dict['defaults'].items():
             setattr(model, f"default_{k}", v)
+        for k, v in model_dict['meta'].items():
+            model.meta[k] = v
+
         return model
 
     # Placed this code next to `_LayerDict` for easier cross-checking of code
