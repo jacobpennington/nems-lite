@@ -96,7 +96,6 @@ class WeightChannels(Layer):
             output = np.tensordot(input, self.coefficients, axes=(1, 0))
         except ValueError as e:
             # Check for dimension swap, to give more informative error message.
-            #if 'mismatch in its core dimension' in str(e):  # for @
             if 'shape-mismatch for sum' in str(e):
                 raise ShapeError(self, input=input.shape,
                                  coefficients=self.coefficients.shape)
