@@ -192,13 +192,13 @@ class Model:
 
         Parameters
         ----------
-        input : ndarray, list of ndarray, dict, or DataSet.
-            If ndarray or list, use this as the input to the first Layer.
+        input : ndarray, dict, or DataSet.
+            If ndarray, use this as the input to the first Layer.
             Otherwise, use keys specified by `input_name` or `Layer.input` to
             determine the first input.
-        state : ndarray or list of ndarray; optional.
+        state : ndarray; optional.
             Add this to `DataSet.inputs`. This option can only be used in
-            conjunction with an array or list `input`. If other data is needed,
+            conjunction with an array `input`. If other data is needed,
             use a dictionary input containing all data.
         input_name : str; optional.
             Specifies which array should be provided as input to the
@@ -321,7 +321,7 @@ class Model:
 
         Parameters
         ----------
-        input : ndarray, list of ndarray, dict, or DataSet
+        input : ndarray, dict, or DataSet
         n : int; optional.
         batch_size : int or None; default=0.
         permute_batches : bool; default=False.
@@ -539,7 +539,7 @@ class Model:
 
         Parameters
         ----------
-        input : ndarray, list of ndarray, dict, or DataSet.
+        input : ndarray, dict, or DataSet.
             See `Model.evaluate`.
         max_char : int; default=79.
             Maximum number of characters to display on each line.
@@ -645,7 +645,7 @@ class Model:
 
         Parameters
         ----------
-        input : np.ndarray or list of ndarray, dict, or Dataset.
+        input : np.ndarray, dict, or Dataset.
             See `Model.evaluate`.
         target : np.ndarray or dict of np.ndarray.
             TODO: support dict
