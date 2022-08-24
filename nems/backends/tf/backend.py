@@ -7,11 +7,27 @@ from ..base import Backend, FitResults
 
 
 class TensorFlowBackend(Backend):
-    def __init__(self, nems_model, data, eval_kwargs=None, **backend_options):
-        super().__init__(nems_model, data, eval_kwargs=eval_kwargs,
-                         **backend_options)
 
     def _build(self, data, eval_kwargs=None):
+        """Build a TensorFlow Keras model that corresponds to a NEMS Model. 
+
+        Parameters
+        ----------
+        data : DataSet
+            Model inputs, outputs and targets.
+        eval_kwargs : dict
+            Keyword arguments for `nems_model.evaluate`.
+
+        Returns
+        -------
+        tensorflow.keras.Model
+
+        Notes
+        -----
+        This method will only work if all Layers in the NEMS Model have
+        implemented `as_tensorflow_layer`.
+        
+        """
         # TODO: what backend options to accept?
 
         batch_size = eval_kwargs.get('batch_size', None)
@@ -21,8 +37,9 @@ class TensorFlowBackend(Backend):
                 "numbers shift. Need to fix that before this will work."
             )
 
+        # Get input/output mappings and keras layers.
         data_maps = self.nems_model.get_data_maps()
-        tf_kwargs = {}  # TODO
+        tf_kwargs = {}  # TODO, regularizer etc.
         tf_layers = [layer.as_tensorflow_layer(**tf_kwargs)
                         for layer in self.nems_model.layers]
         input = data.inputs
@@ -32,7 +49,7 @@ class TensorFlowBackend(Backend):
         for k, v in input.items():
             # Skip trial/sample dimension when determining shape.
             tf_in = Input(shape=v.shape[1:], name=k, batch_size=batch_size,
-                        dtype='float32')  # TODO: why hard-code float32?
+                          dtype='float32')  # TODO: don't hard-code float32
             tf_input_dict[k] = tf_in
         unused_inputs = list(tf_input_dict.keys())
 
@@ -85,14 +102,33 @@ class TensorFlowBackend(Backend):
         return model
 
     def _fit(self, data, eval_kwargs=None, learning_rate=0.001, epochs=1):
+        """Optimize `TensorFlowBackend.nems_model` using Adam SGD.
+        
+        Currently the use of other TensorFlow optimizers is not exposed as an
+        option, but that may be added at a later time.
 
-        # TODO: anything from eval_kwargs actually needed here? I think all
-        #       of the relevant options are used in _build.
+        TODO: allow loss functions other than mean squared error.
+
+        Parameters
+        ----------
+        data : DataSet
+            Model inputs, outputs and targets. Data must have shape (S, T, ...)
+            where S is the number of samples/trials/etc, even if `S=1`.
+        eval_kwargs : dict
+            Keyword arguments for `nems_model.evaluate`.
+        learning_rate : float; default=0.001.
+            See docs for `tensorflow.keras.optimizers.Adam`.
+        epochs : int
+            Number of optimization iterations to perform.
+
+        Returns
+        -------
+        FitResults
+
+        """
 
         # TODO: support more keys in `fitter_options`.
 
-        # NOTE: expects arrays in data to already be formatted as shape
-        #       (S,T,C) instead of (T,C), same for target as well.
         initial_parameters = self.nems_model.get_parameter_vector()
         final_layer = self.nems_model.layers[-1].name
         self.model.compile(
@@ -105,7 +141,11 @@ class TensorFlowBackend(Backend):
         #       layers. _build would need to establish a mapping I guess, since
         #       it has the information about which layer generates which output.
         input = data.inputs
+        if len(data.targets) > 1:
+            raise NotImplementedError("Only one target supported currently.")
         target = list(data.targets.values())[0]
+        loss_fn = self.model.loss[final_layer]
+        initial_error = loss_fn(target, self.model.predict(input)).numpy()
         history = self.model.fit(
             input, {final_layer: target}, epochs=epochs
         )
@@ -113,14 +153,15 @@ class TensorFlowBackend(Backend):
         # Save weights back to NEMS model
         # (first two TF layers are input layers, skip it).
         # TODO: This assumes there aren't any other extra layers added
-        #       by TF. That might not be the case for some model types.
+        #       by TF. That might not be the case for some model types. Better
+        #       approach would be to track keys for the specific layers that
+        #       have the parameters we need.
         skip = len(self.model.inputs)
         layer_iter = zip(self.nems_model.layers, self.model.layers[skip:])
         for nems_layer, tf_layer in layer_iter:
             nems_layer.set_parameter_values(tf_layer.weights_to_values())
 
         final_parameters = self.nems_model.get_parameter_vector()
-        initial_error = 'TODO'  # TODO
         final_error = history.history['loss'][-1]
         nems_fit_results = FitResults(
             initial_parameters, final_parameters, initial_error, final_error,
@@ -130,5 +171,20 @@ class TensorFlowBackend(Backend):
         return nems_fit_results
 
     def predict(self, input, **eval_kwargs):
+        """Get output of `TensorFlowBackend.model` given `input`.
+        
+        Parameters
+        ----------
+        input : ndarray, dict, or Dataset.
+            See `nems.models.base.Model.evaluate`.
+        eval_kwargs : dict
+            Additional keyword arguments for `Model.evaluate`.
+
+        Returns
+        -------
+        np.ndarray
+            Outpt of the associated Keras model.
+
+        """
         # TODO: Any kwargs needed here?
         return self.model.predict(input)

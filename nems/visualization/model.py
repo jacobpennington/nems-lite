@@ -168,6 +168,13 @@ def plot_model(model, input, target=None, target_name=None, n=None,
 
     """
 
+    batch_size = eval_kwargs.get('batch_size', 0)
+    if batch_size != 0:
+        raise NotImplementedError(
+            "Model visualizations are not yet implemented for batched data.\n"
+            "To visualize input, collapse sample dimension."
+            )
+
     # Collect options for `ax_bins_to_seconds`
     if sampling_rate is not None:
         time_kwargs = {

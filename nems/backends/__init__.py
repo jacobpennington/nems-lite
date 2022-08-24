@@ -1,15 +1,17 @@
-"""TODO: docs
+"""Computational frameworks for fitting Models.
 
-Alternative computational frameworks for fitting models.
 To include: SciPy (default), TensorFlow, ... (others)
 
-NOTE: No public API here so that backend dependencies are only imported if used.
+NOTE: There are no public API imports here so that backend dependencies are
+      only imported if used. For example, users don't need to install TensorFlow
+      unless they want to fit models using `Model.fit(..., backend='tf')`.
 
 """
 
-# TODO: better way to do this. For now, new backends just have to add on
+# TODO: better way to do this. For now, new backends just have to add on to
 #       this if/else chain.
 def get_backend(name):
+    """Import and return a Backend subclass corresponding to `name`."""
     name = name.lower()
     if name == 'scipy':
         from .scipy import SciPyBackend
