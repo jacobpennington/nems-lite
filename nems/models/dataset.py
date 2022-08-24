@@ -7,9 +7,6 @@ TODO: May be a better place to put this?
 import numpy as np
 
 
-# TODO: remove/make optional all the asser(shares_memory) calls, to speed up
-#       evaluation. still want something in place for debugging, but they don't 
-#       need to be checked every time.
 class DataSet:
     # Use these names if `input_name`, `state_name`, etc. are not specified
     # in DataSet.__init__.
@@ -68,6 +65,7 @@ class DataSet:
             if name is None: name = getattr(self, f'default_{attr}')
             setattr(self, f'{attr}_name', name)
         self.dtype = dtype
+        self.debug_memory = debug_memory
         # TODO: how to use dtype
         self.initialize_data(input, state, target)  # other kwargs too
 
@@ -185,8 +183,7 @@ class DataSet:
 
     # TODO: maybe document this as a public method, or move to general utilities?
     #       Could be useful elsewhere.
-    @staticmethod
-    def _broadcast_dict(d1, d2, same=False):
+    def _broadcast_dict(self, d1, d2, same=False):
         """Internal for broadcast_samples."""
         if (len(d1) == 0) or (len(d1) == 1 and same) or (len(d2) == 0):
             # Nothing to broadcast to
@@ -203,7 +200,8 @@ class DataSet:
                         # (i.e. number of samples). If v.shape = (1, ...) and
                         # v2.shape = (N, ...), new_v.shape = (N, ...).
                         new_v = np.broadcast_to(v, v2.shape[:1] + v.shape[1:])
-                        assert np.shares_memory(new_v, v)
+                        if self.debug_memory:
+                            assert np.shares_memory(new_v, v)
                         new_d[k] = new_v
                     except ValueError:
                         # Incompatible shape (either both arrays have multiple
@@ -229,6 +227,7 @@ class DataSet:
         Yields
         ------
         DataSet
+            Dict entries will be lists of samples.
 
         Notes
         -----
@@ -264,6 +263,8 @@ class DataSet:
             # TODO: Not quite this simple, have to be able to put the concatenated
             #       outputs back in the right order. So need to store the shuffled
             #       indices somehow.
+            # TODO: Should samples be shuffled instead/in addition? Otherwise
+            #       the same samples always end up in a batch together.
             raise NotImplementedError("Shuffling batches not implemented yet")
 
         for i in indices:
@@ -298,79 +299,30 @@ class DataSet:
         return batched_data
 
     def as_samples(self):
-        """TODO: docs"""
-        # NOTE: must alread have a sample dimension, use as_batches first
-        #       if not.
-        # NOTE: Every array must have the same number of samples
-        #       otherwise this will not work as intended.
+        """Generate copies of a batch DataSet, containing single samples.
+        
+        `DataSet.inputs, .outputs, .targets` should contain a list of arrays at
+        each key, as yielded by `DataSet.as_batches`.
+
+        Yields
+        ------
+        DataSet
+
+        """
+
         n_samples = len(list(self.inputs.values())[0])
         s_inputs, s_outputs, s_targets = [
             {k: np.split(v, n_samples) for k, v in d.items()}
             for d in [self.inputs, self.outputs, self.targets]
             ]
 
-        # TODO: want to be able to permute samples within batches as well?
         for i in range(n_samples):
             inputs = {k: v[i].squeeze(axis=0) for k, v in s_inputs.items()}
             outputs = {k: v[i].squeeze(axis=0) for k, v in s_outputs.items()}
             targets = {k: v[i].squeeze(axis=0) for k, v in s_targets.items()}
-            self.assert_no_copies(inputs, outputs, targets)
+            if self.debug_memory:
+                self.assert_no_copies(inputs, outputs, targets)
             yield self.modified_copy(inputs, outputs, targets)
-
-
-    def as_dict(self):
-        return {**self.inputs, **self.outputs, **self.targets}
-
-    # Pass dict get (but not set) operations to self.inputs, outputs, targets
-    def __getitem__(self, key):
-        return self.as_dict()[key]
-    def get(self, key, default):
-        return self.as_dict().get(key, default)
-    def items(self):
-        return self.as_dict().items()
-    def __iter__(self):
-        return self.as_dict().__iter__()
-    def __len__(self):
-        return len(self.as_dict())
-
-    def modified_copy(self, inputs, outputs, targets):
-        # TODO: make sure this still shares memory
-        data = DataSet(
-            inputs, state=None, target=targets, dtype=self.dtype,
-            input_name=self.input_name, state_name=self.state_name,
-            output_name=self.output_name, target_name=self.target_name
-            )
-        data.outputs = outputs
-        return data
-
-    def copy(self):
-        return self.modified_copy(self.inputs, self.outputs, self.targets)
-
-    def apply(self, fn, allow_copies=False):
-        """TODO: docs. Maps {k: v} -> {k: fn(v)} for all k, v."""
-        inputs, outputs, targets = [
-            self._apply_to_dict(fn, d, allow_copies=allow_copies)
-            for d in [self.inputs, self.outputs, self.targets]
-            ]
-        return self.modified_copy(inputs, outputs, targets)
-    
-    def _apply_to_dict(self, fn, d, allow_copies=False):
-        new_d = d.copy()
-        for k, v in new_d.items():
-            new_v = fn(v)
-            if not allow_copies:
-                assert np.shares_memory(new_v, v)
-            new_d[k] = new_v
-        return new_d
-
-    def assert_no_copies(self, inputs, outputs, targets):
-        """TODO: docs. For debugging, check if arrays share memory with self."""
-        for k in inputs.keys():
-            assert np.shares_memory(inputs[k], self.inputs[k])
-        for k in outputs.keys():
-            assert np.shares_memory(outputs[k], self.outputs[k])
-        for k in targets.keys():
-            assert np.shares_memory(targets[k], self.targets[k])
 
     def prepend_samples(self):
         """Prepend a singleton sample dimension."""
@@ -399,3 +351,116 @@ class DataSet:
                         for k, v in outputs.items()}
 
         return concatenated
+
+    def modified_copy(self, inputs, outputs, targets):
+        """Get a shallow copy of DataSet with new data dictionaries.
+        
+        Parameters
+        ----------
+        inputs : dict
+        outputs : dict
+        targets : dict
+
+        Returns
+        -------
+        DataSet
+        
+        """
+        data = DataSet(
+            inputs, state=None, target=targets, dtype=self.dtype,
+            input_name=self.input_name, state_name=self.state_name,
+            output_name=self.output_name, target_name=self.target_name
+            )
+        data.outputs = outputs
+        return data
+
+    def copy(self):
+        """Get a shallow copy of DataSet."""
+        return self.modified_copy(self.inputs, self.outputs, self.targets)
+
+    def apply(self, fn, *args, allow_copies=False, **kwargs):
+        """Maps {k: v} -> {k: fn(v, *args, **kwargs)} for all k, v in DataSet.
+        
+        Parameters
+        ----------
+        fn : callable
+            Must accept a single ndarray as its first positional argument.
+        args : N-tuple
+            Additional positional arguments for `fn`.
+        allow_copies : bool; default=True.
+            If False, raise AssertionError if `fn(v, *args, **kwargs)` returns
+            an array that does not share memory with `v`.
+        kwargs : dict
+            Additional keyword arguments for `fn`.
+
+        Returns
+        -------
+        DataSet
+            A modified copy containing the transformed arrays.
+
+        Examples
+        --------
+        TODO
+        
+        """
+        inputs, outputs, targets = [
+            self._apply_to_dict(fn, d, *args, allow_copies=allow_copies,
+                                **kwargs)
+            for d in [self.inputs, self.outputs, self.targets]
+            ]
+        return self.modified_copy(inputs, outputs, targets)
+    
+    def _apply_to_dict(self, fn, d, *args, allow_copies=True, **kwargs):
+        """Internal for `DataSet.apply`."""
+        new_d = d.copy()
+        for k, v in new_d.items():
+            new_v = fn(v, *args, **kwargs)
+            if not allow_copies:
+                assert np.shares_memory(new_v, v)
+            new_d[k] = new_v
+        return new_d
+
+    def assert_no_copies(self, inputs, outputs, targets):
+        """Check if arrays in dictionaries share memory with arrays in DataSet.
+        
+        Useful for debugging memory inflation. Note that keys of arguments are
+        iterated over, not keys of DataSet. This means inputs, outputs and
+        targets can contain subsets of the keys present in DataSet, in which
+        case not all arrays in DataSet will be checked.
+
+        Parameters
+        ----------
+        inputs : dict
+        outputs : dict
+        targets : dict
+
+        Raises
+        ------
+        AssertionError
+            If `np.shares_memory(inputs[k], DataSet.inputs[k])` is False for
+            any array in inputs. The same comparison is repeated for outputs
+            and targets.
+
+        """
+        for k in inputs.keys():
+            assert np.shares_memory(inputs[k], self.inputs[k])
+        for k in outputs.keys():
+            assert np.shares_memory(outputs[k], self.outputs[k])
+        for k in targets.keys():
+            assert np.shares_memory(targets[k], self.targets[k])
+
+    def as_dict(self):
+        """Get `DataSet.inputs, .outputs, .targets` as a single dictionary."""
+        return {**self.inputs, **self.outputs, **self.targets}
+
+    # Pass dict get (but not set) operations to self.inputs, outputs, targets
+    def __getitem__(self, key):
+        return self.as_dict()[key]
+    def get(self, key, default):
+        return self.as_dict().get(key, default)
+    def items(self):
+        return self.as_dict().items()
+    def __iter__(self):
+        return self.as_dict().__iter__()
+    def __len__(self):
+        return len(self.as_dict())
