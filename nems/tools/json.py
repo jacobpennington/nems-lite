@@ -148,10 +148,22 @@ def nems_from_json(obj):
 
 
 def save_model(model, filepath):
-    """
-    :param model: NEMS model object
-    :param filepath: path+filename string
-    :return:
+    """Save a Model to `filepath` as a json file.
+
+    TODO: refactor using pathlib, options to use different permissions.
+
+    Parameters
+    ----------
+    model: nems.models.base.Model
+        NEMS model object to save.
+    filepath : string
+        Full path including file name and parent directories.
+    
+    Notes
+    -----
+    Currently this function is hard-coded to set broad permissions for
+    the saved file.
+
     """
     data = nems_to_json(model)
     dirpath = os.path.dirname(filepath)
@@ -168,13 +180,21 @@ def save_model(model, filepath):
             pass
 
 def load_model(filepath):
-    """
-    :param filepath: location of saved model
-    :return: model: NEMS model object
+    """Load a Model from a json file saved at `filepath`.
+
+    Parameters
+    ----------
+    filepath : string
+        Full path to the location of the saved Model, including file name.
+
+    Returns
+    -------
+    model : nems.models.base.Model
+        A NEMS Model object.
+
     """
     with open(filepath, mode='r') as f:
         data = f.read()
-        # print(data)
 
     model = nems_from_json(data)
 
