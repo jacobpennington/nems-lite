@@ -699,8 +699,7 @@ class Model:
         # Build backend model.
         backend_obj = backend_class(new_model, data, eval_kwargs=eval_kwargs,
                                     **backend_options)
-        # Fit backend, save results. This should update the parameters of
-        # `new_model` as well.
+        # Fit backend, save results.
         fit_results = backend_obj._fit(
             data, eval_kwargs=eval_kwargs, **fitter_options
             )
