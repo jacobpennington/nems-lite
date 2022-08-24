@@ -60,6 +60,7 @@ array([1, 2, 3, 4])
 """
 
 import os
+import re
 import json
 import inspect
 from functools import partialmethod
@@ -179,3 +180,16 @@ def load_model(filepath):
     model = nems_from_json(data)
 
     return model
+
+def generate_model_filepath(model, basepath=""):
+    guess = model.name
+
+    # remove problematic characters
+    guess = re.sub('[/]', '_', guess)
+    guess = re.sub('[:]', '', guess)
+    guess = re.sub('[,]', '', guess)
+
+    if len(guess) > 100:
+        # If modelname is too long, causes filesystem errors.
+        guess = guess[:80] + '...' + str(hash(guess))
+    return os.path.join(basepath, guess, 'model.json')

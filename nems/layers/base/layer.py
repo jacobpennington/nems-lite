@@ -710,7 +710,7 @@ class Layer:
         """
         self.parameters.set_index(i, new_index=new_index)
 
-    def plot(self, output, fig=None, **plot_kwargs):
+    def plot(self, output, fig=None, ax=None, **plot_kwargs):
         """Alias for `nems.visualization.model.plot_layer`.
 
         By default, layer output will be represented by a single 2D line plot
@@ -763,7 +763,7 @@ class Layer:
         >>> layer.plot(output)
         
         """
-        return plot_layer(output, fig=fig, **plot_kwargs)
+        return plot_layer(output, fig=fig, ax=ax, **plot_kwargs)
 
     @property
     def plot_kwargs(self):

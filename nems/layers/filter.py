@@ -5,6 +5,7 @@ import scipy.signal
 
 from .base import Layer, Phi, Parameter
 from nems.registry import layer
+from nems.distributions import Normal, HalfNormal
 
 class FiniteImpulseResponse(Layer):
     """Convolve linear filter(s) with input.
@@ -63,9 +64,15 @@ class FiniteImpulseResponse(Layer):
         Returns
         -------
         nems.layers.base.Phi
-
         """
-        coefficients = Parameter(name='coefficients', shape=self.shape)
+        mean = np.full(shape=self.shape, fill_value=0.0)
+        sd = np.full(shape=self.shape, fill_value=1/np.prod(self.shape))
+        mean[1, :] = 2/np.prod(self.shape)
+        mean[2, :] = -1/np.prod(self.shape)
+        prior = Normal(mean, sd)
+
+        coefficients = Parameter(name='coefficients', shape=self.shape,
+                                 prior=prior)
         return Phi(coefficients)
 
     @property
