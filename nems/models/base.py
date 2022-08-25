@@ -693,7 +693,7 @@ class Model:
             )
 
         # Update parameters of a copy, not the original model.
-        new_model = copy.deepcopy(self)
+        new_model = self.copy()
         # Get Backend sublass.
         backend_class = get_backend(name=backend)
         # Build backend model.
@@ -1063,6 +1063,10 @@ class Model:
         """
         model = cls(layers=json['layers'], name=json['name'], meta=json['meta'])
         return model
+
+    def copy(self):
+        """Returns a deep copy of Model."""
+        return copy.deepcopy(self)
 
     # Placed this code next to `_LayerDict` for easier cross-checking.
     def __getitem__(self, key):
