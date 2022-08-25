@@ -785,9 +785,10 @@ class Model:
         nems.layers.base.Layer.set_parameter_vector
         
         """
+
         first_index = 0
         for layer in self.layers:
-            parameter_size = layer.parameters.size
+            parameter_size = layer.parameters.unfrozen_size
             last_index = first_index + parameter_size
             layer.set_parameter_vector(vector[first_index:last_index],
                                        ignore_checks=ignore_checks)

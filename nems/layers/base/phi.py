@@ -132,6 +132,8 @@ class Phi:
     def get_bounds_vector(self, none_for_inf=True):
         """Return a list of bounds from each parameter in `Phi._dict`.
         
+        Will not include bounds for frozen parameters.
+
         Parameters
         ----------
         none_for_inf : bool, default=True
@@ -144,7 +146,7 @@ class Phi:
         
         """
         # Flatten the list returned by each Parameter
-        bounds = [b for p in self._dict.values()
+        bounds = [b for p in self._dict.values() if not p.is_frozen
                   for b in p.get_bounds_vector(none_for_inf=none_for_inf)]
         return bounds
 
@@ -224,7 +226,7 @@ class Phi:
         
         """
         if not ignore_checks:
-            if np.array(vector).size != self._vector_mask.size:
+            if np.array(vector).size != self.unfrozen_size:
                 raise ValueError(f"Size of new vector != Phi.get_vector.")
             if not self.within_bounds(vector):
                 bad_indices = self.get_indices_outof_range(vector, as_bool=False)
@@ -293,6 +295,11 @@ class Phi:
             if p.is_frozen:
                 p.unfreeze()
         self._update_vector_mask()
+
+    @property
+    def unfrozen_size(self):
+        """Get number of values corresponding to unfrozen parameters."""
+        return len(self.get_vector(as_list=True))
 
     def set_permanent_values(self, *dct, **kwargs):
         """Set parameters to fixed values. The parameters will not unfreeze."""
