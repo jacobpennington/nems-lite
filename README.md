@@ -14,7 +14,6 @@ for `numpy` (which uses `openblas` instead of `mkl`):
 (https://github.com/conda-forge/numpy-feedstock/issues/84)
 
 Coming soon, roughly in order of priority:
-* Finish/clean up docs for core components.
 * Convert dev_notebooks to unit tests where appropriate (& automatic testing using Travis, like nems0).
 * Set up readthedocs.
 * Add more Layers from nems0.
