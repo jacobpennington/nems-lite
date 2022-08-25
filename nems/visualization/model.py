@@ -351,7 +351,7 @@ def plot_model_with_parameters(model, input, target=None, target_name=None, n=No
 
         k = list(layer.parameters.keys())
         if 'coefficients' in k:
-            pax.plot(layer.parameters['coefficients'], lw=0.5)
+            pax.plot(layer.coefficients, lw=0.5)
             x_pos = pax.get_xlim()[0]
             y_pos = pax.get_ylim()[1]
             title = f'coefficients'
@@ -412,6 +412,22 @@ def plot_model_with_parameters(model, input, target=None, target_name=None, n=No
     figure.suptitle(model.name, fontsize=10)
 
     return figure
+
+def simple_strf(model, ax=None, fig=None):
+    if ax is not None:
+        fig = ax.figure
+    else:
+        if fig is None:
+            fig = plt.figure()
+        ax = fig.subplots(1, 1)
+
+    wc = model.layers[0].coefficients
+    fir = model.layers[1].coefficients
+    strf = wc @ fir.T
+    ax.imshow(strf, aspect='auto', interpolation='none', origin='lower')
+
+    return fig
+
 
 def plot_layer(output, fig=None, ax=None, **plot_kwargs):
     """Default Layer plot, displays all outputs on a single 2D line plot.
