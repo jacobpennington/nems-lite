@@ -20,6 +20,7 @@ from .mse import mse, nmse
 from .correlation import correlation, noise_corrected_r
 
 
+# TODO: This should move to scipy backend, keep model assessment at top level.
 
 metric_nicknames = {'corr': correlation, 'r_ceiling': noise_corrected_r}
 def get_metric(name):

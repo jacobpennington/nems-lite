@@ -101,7 +101,10 @@ class TensorFlowBackend(Backend):
 
         return model
 
-    def _fit(self, data, eval_kwargs=None, learning_rate=0.001, epochs=1):
+    def _fit(self, data, eval_kwargs=None, learning_rate=0.001, epochs=1,
+             early_stopping_delay=100, early_stopping_patience=150,
+             early_stopping_tolerance=5e-4, validation_split=0.0,
+             validation_data=None):
         """Optimize `TensorFlowBackend.nems_model` using Adam SGD.
         
         Currently the use of other TensorFlow optimizers is not exposed as an
@@ -120,6 +123,22 @@ class TensorFlowBackend(Backend):
             See docs for `tensorflow.keras.optimizers.Adam`.
         epochs : int
             Number of optimization iterations to perform.
+        early_stopping_delay : int
+            Minimum epoch before early stopping criteria are used. Set
+            delay to 0 to use early stopping immediately.
+        early_stopping_tolerance : float
+            Minimum change in error between epochs considered to be an
+            improvement (`min_delta` for `tf.keras.callbacks.EarlyStopping`).
+            To disable early stopping, set tolerance to 0.
+        early_stopping_patience : int
+            Number of epochs to continue optimization for without improvement.
+            (`patience` for `tf.keras.callbacks.EarlyStopping`.)
+        validation_split : float
+            Proportion of data to treat as temporary validation data
+            (`validation_split` for `tf.keras.Model.fit`).
+        validation_data : tuple of ndarray or tensors; optional.
+            Specify validation data manually (overrides `validation_split`).
+            See `tf.keras.Model.fit` for details.
 
         Returns
         -------
@@ -128,13 +147,28 @@ class TensorFlowBackend(Backend):
         """
 
         # TODO: support more keys in `fitter_options`.
-
+        # Store initial parameters, compile optimizer and loss for model.
         initial_parameters = self.nems_model.get_parameter_vector()
         final_layer = self.nems_model.layers[-1].name
         self.model.compile(
             optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
             loss={final_layer: keras.losses.MeanSquaredError()}
         )
+
+        # Build callbacks for early stopping, ... (what else?)
+        callbacks = []
+        loss_name = 'loss'
+        if (validation_split > 0) or (validation_data is not None):
+            loss_name = 'val_loss'
+        if early_stopping_tolerance != 0:
+            early_stopping = DelayedStopper(
+                monitor=loss_name, patience=early_stopping_patience,
+                min_delta=early_stopping_tolerance, verbose=1,
+                restore_best_weights=True, start_epoch=early_stopping_delay,
+                )
+            callbacks.append(early_stopping)
+        # Change back to default None if no callbacks were specified
+        if len(callbacks) == 0: callbacks = None
 
         # TODO: This assumes a single output (like our usual models).
         #       Need to tweak this to be able to fit outputs from multiple
@@ -144,10 +178,14 @@ class TensorFlowBackend(Backend):
         if len(data.targets) > 1:
             raise NotImplementedError("Only one target supported currently.")
         target = list(data.targets.values())[0]
+        
         loss_fn = self.model.loss[final_layer]
         initial_error = loss_fn(target, self.model.predict(input)).numpy()
+        
         history = self.model.fit(
-            input, {final_layer: target}, epochs=epochs
+            input, {final_layer: target}, epochs=epochs,
+            validation_split=validation_split, callbacks=callbacks,
+            validation_data=validation_data
         )
 
         # Save weights back to NEMS model
@@ -162,10 +200,11 @@ class TensorFlowBackend(Backend):
             nems_layer.set_parameter_values(tf_layer.weights_to_values())
 
         final_parameters = self.nems_model.get_parameter_vector()
-        final_error = history.history['loss'][-1]
+        final_error = history.history[loss_name][-1]
         nems_fit_results = FitResults(
             initial_parameters, final_parameters, initial_error, final_error,
             backend_name='TensorFlow',
+            misc={'TensorFlow History': history.history}
         )
 
         return nems_fit_results
@@ -188,3 +227,14 @@ class TensorFlowBackend(Backend):
         """
         # TODO: Any kwargs needed here?
         return self.model.predict(input)
+
+
+class DelayedStopper(tf.keras.callbacks.EarlyStopping):
+    """Early stopper that waits before kicking in."""
+    def __init__(self, start_epoch=100, **kwargs):
+        super(DelayedStopper, self).__init__(**kwargs)
+        self.start_epoch = start_epoch
+
+    def on_epoch_end(self, epoch, logs=None):
+        if epoch > self.start_epoch:
+            super().on_epoch_end(epoch, logs)

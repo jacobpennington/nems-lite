@@ -68,6 +68,7 @@ class SciPyBackend(Backend):
             cost_function, self.nems_model, eval_kwargs, log_spacing
             )
         
+        # TODO: check tolerance change between epochs.
         for ep in range(epochs):
             print(f"Epoch {ep}")
             print("="*30)
@@ -76,6 +77,9 @@ class SciPyBackend(Backend):
                 _data = data.copy()
                 fit_result = wrapper.get_fit_result(_data, **fitter_options)
             else:
+                # TODO: maybe better to only generate batches once? Would have
+                #       to load them all in a list, but they should be views
+                #       anyway.
                 batch_generator = self.nems_model.generate_batch_data(
                     data, **eval_kwargs
                     )
