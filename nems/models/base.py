@@ -1065,8 +1065,23 @@ class Model:
         return model
 
     def copy(self):
-        """Returns a deep copy of Model."""
-        return copy.deepcopy(self)
+        """Returns a deep copy of Model without a backend or fit results.
+        
+        Notes
+        -----
+        FitResults and Backend objects are removed because they may contain
+        state-dependent objects from other packages that cannot copy correctly.
+        
+        """
+        results = self.results
+        backend = self.backend
+        self.results = None
+        self.backend = None
+        copied_model = copy.deepcopy(self)
+        self.results = results
+        self.backend = backend
+    
+        return copied_model
 
     # Placed this code next to `_LayerDict` for easier cross-checking.
     def __getitem__(self, key):
