@@ -4,6 +4,7 @@ import tensorflow.keras as keras
 from tensorflow.keras import Input
 
 from ..base import Backend, FitResults
+from .cost import get_cost
 
 
 class TensorFlowBackend(Backend):
@@ -101,10 +102,10 @@ class TensorFlowBackend(Backend):
 
         return model
 
-    def _fit(self, data, eval_kwargs=None, learning_rate=0.001, epochs=1,
-             early_stopping_delay=100, early_stopping_patience=150,
-             early_stopping_tolerance=5e-4, validation_split=0.0,
-             validation_data=None):
+    def _fit(self, data, eval_kwargs=None, cost_function='squared_error',
+             epochs=1, learning_rate=0.001, early_stopping_delay=100,
+             early_stopping_patience=150, early_stopping_tolerance=5e-4,
+             validation_split=0.0, validation_data=None):
         """Optimize `TensorFlowBackend.nems_model` using Adam SGD.
         
         Currently the use of other TensorFlow optimizers is not exposed as an
@@ -119,10 +120,16 @@ class TensorFlowBackend(Backend):
             where S is the number of samples/trials/etc, even if `S=1`.
         eval_kwargs : dict
             Keyword arguments for `nems_model.evaluate`.
-        learning_rate : float; default=0.001.
-            See docs for `tensorflow.keras.optimizers.Adam`.
+        cost_function : str or function; default='squared_error'
+            Specifies which metric to use for computing error while fitting.
+            Uses mean squared error by default.
+            If str      : Replace with `get_loss(str)`.
+            If function : Use this function to compute errors. Should accept
+                          two array arguments and return float.
         epochs : int
             Number of optimization iterations to perform.
+        learning_rate : float; default=0.001.
+            See docs for `tensorflow.keras.optimizers.Adam`.
         early_stopping_delay : int
             Minimum epoch before early stopping criteria are used. Set
             delay to 0 to use early stopping immediately.
@@ -146,13 +153,17 @@ class TensorFlowBackend(Backend):
 
         """
 
+        # Replace cost_function name with function object.
+        if isinstance(cost_function, str):
+            cost_function = get_cost(cost_function)
+
         # TODO: support more keys in `fitter_options`.
         # Store initial parameters, compile optimizer and loss for model.
         initial_parameters = self.nems_model.get_parameter_vector()
         final_layer = self.nems_model.layers[-1].name
         self.model.compile(
             optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
-            loss={final_layer: keras.losses.MeanSquaredError()}
+            loss={final_layer: cost_function}
         )
 
         # Build callbacks for early stopping, ... (what else?)
@@ -178,9 +189,16 @@ class TensorFlowBackend(Backend):
         if len(data.targets) > 1:
             raise NotImplementedError("Only one target supported currently.")
         target = list(data.targets.values())[0]
-        
+
         loss_fn = self.model.loss[final_layer]
-        initial_error = loss_fn(target, self.model.predict(input)).numpy()
+        # TODO: The nems0 loss functions don't allow passing in ndarray
+        #       directly, have to package as tensors?
+        #       But that causes different errors...
+        initial_error = loss_fn(
+            tf.constant(target, dtype=tf.float32),
+            tf.constant(self.model.predict(input), dtype=tf.float32)
+            ).numpy()
+        # initial_error = 'TODO'
         
         history = self.model.fit(
             input, {final_layer: target}, epochs=epochs,

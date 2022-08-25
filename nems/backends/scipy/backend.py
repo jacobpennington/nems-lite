@@ -1,7 +1,7 @@
 import scipy.optimize
 
-from nems.metrics import get_metric
-from .base import Backend, FitResults
+from .cost import get_cost
+from ..base import Backend, FitResults
 
 
 class SciPyBackend(Backend):
@@ -12,7 +12,7 @@ class SciPyBackend(Backend):
         # SciPyBackend.model and .nems_model are the same.
         return self.nems_model
 
-    def _fit(self, data, eval_kwargs=None, cost_function='mse',
+    def _fit(self, data, eval_kwargs=None, cost_function='nmse',
              epochs=1, log_spacing=5, **fitter_options):
         """Fit a Model using `scipy.optimize.minimize`.
 
@@ -22,11 +22,13 @@ class SciPyBackend(Backend):
             Model inputs, outputs and targets.
         eval_kwargs : dict
             Keyword arguments for `nems_model.evaluate`.
-        cost_function : str or func; default='mse'
+        cost_function : str or function; default='nmse'
             Specifies which metric to use for computing error while fitting.
-            If str  : Invoke `nems.metrics.get_metric(str)`.
-            If func : Use this function to compute errors. Should accept two
-                      array arguments and return float.
+            Default is mean squared error normalized by the standard deviation
+            of the target.
+            If str      : Replace with `get_cost(str)`.
+            If function : Use this function to compute errors. Should accept
+                          two array arguments and return float.
         epochs : int; default=1.
             Number of "outer loops" to repeat optimization over. Note that this
             is redundant with `fitter_options={'options': {'maxiter': N}}` if
@@ -62,8 +64,8 @@ class SciPyBackend(Backend):
         batch_size = eval_kwargs.get('batch_size', 0)
 
         if isinstance(cost_function, str):
-            # Convert string reference to metric function
-            cost_function = get_metric(cost_function)
+            # Convert string reference to loss function
+            cost_function = get_cost(cost_function)
         wrapper = _FitWrapper(
             cost_function, self.nems_model, eval_kwargs, log_spacing
             )

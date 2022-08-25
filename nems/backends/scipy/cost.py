@@ -1,3 +1,5 @@
+"""Cost functions for SciPyBackend."""
+
 import numpy as np
 
 
@@ -71,3 +73,18 @@ def nmse(prediction, target):
     else:
         normalized_error = error / std_of_target
     return normalized_error
+
+
+# Add nickname here if desired string name doesn't match
+# the name of the function.
+cost_nicknames = {}
+def get_cost(name):
+    if name in cost_nicknames:
+        cost = cost_nicknames[name]
+    else:
+        cost = globals().get(name, None)
+    if cost is None:
+        raise TypeError(f"Cost function name '{name}' could not be found.")
+
+    return cost
+    

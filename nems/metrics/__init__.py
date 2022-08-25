@@ -16,19 +16,4 @@ Contents
 
 """
 
-from .mse import mse, nmse
 from .correlation import correlation, noise_corrected_r
-
-
-# TODO: This should move to scipy backend, keep model assessment at top level.
-
-metric_nicknames = {'corr': correlation, 'r_ceiling': noise_corrected_r}
-def get_metric(name):
-    if name in metric_nicknames:
-        metric = metric_nicknames[name]
-    else:
-        metric = globals().get(name, None)
-    if metric is None:
-        raise TypeError(f"Metric name '{name}' could not be found.")
-
-    return metric
