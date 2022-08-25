@@ -29,11 +29,28 @@ class StaticNonlinearity(Layer):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.skip_nonlinearity = False
+        self._skip_nonlinearity = False
+        self._unfrozen_parameters = []
+
+    def skip_nonlinearity(self):
+        """Don't use `nonlinearity`, freeze nonlinear parameters."""
+        self._unfrozen_parameters = [p.name for p in self.parameters
+                                     if not p.is_frozen]
+        self.freeze_parameters()
+        self.unfreeze_parameters('shift')
+        self._skip_nonlinearity = True
+
+    def unskip_nonlinearity(self):
+        """Use `nonlinearity`, unfreeze nonlinear parameters."""
+        # Only unfreeze parameters that were previously unfrozen, but then
+        # frozen by `skip_nonlinearity`.
+        self.unfreeze_parameters(*self._unfrozen_parameters)
+        self._unfrozen_parameters = []
+        self._skip_nonlinearity = False
 
     def evaluate(self, input):
         """Apply `nonlinearity` to input(s). This should not be overwriten."""
-        if not self.skip_nonlinearity:
+        if not self._skip_nonlinearity:
             output = self.nonlinearity(input)
         else:
             # TODO: This works for time on 0-axis and 1-dim parameters,
@@ -46,6 +63,17 @@ class StaticNonlinearity(Layer):
     def nonlinearity(self, input):
         """Pass through input(s). Subclasses should overwrite this."""
         return input
+
+    def as_tensorflow_layer(self, **kwargs):
+        import tensorflow as tf
+        from nems.backends.tf import NemsKerasLayer
+
+        class StaticNonlinearityTF(NemsKerasLayer):
+            def call(self, inputs):
+                # TODO: why identity?
+                return tf.identity(inputs + self.shift)
+
+        return StaticNonlinearityTF(self, **kwargs)
 
 
 class LevelShift(StaticNonlinearity):
@@ -152,10 +180,6 @@ class DoubleExponential(StaticNonlinearity):
         # TODO: explain choices for priors.
         zero = np.zeros(shape=self.shape)
         one = np.ones(shape=self.shape)
-        # model.layers[-1]['shift']=[0.]
-        # model.layers[-1]['kappa']=[1.]
-        # model.layers[-1]['amplitude']=[1.]
-        # model.layers[-1]['base']=[0.]
         phi = Phi(
             Parameter('base', shape=self.shape, prior=Normal(zero, one/5)),
             Parameter('amplitude', shape=self.shape,
@@ -207,14 +231,18 @@ class DoubleExponential(StaticNonlinearity):
         import tensorflow as tf
         from nems.backends.tf import NemsKerasLayer
 
-        class DoubleExponentialTF(NemsKerasLayer):
-            def call(self, inputs):
-                exp = tf.math.exp(-tf.math.exp(
-                    -tf.math.exp(self.kappa) * (inputs - self.shift)
-                    ))
-                return self.base + self.amplitude * exp
 
-        return DoubleExponentialTF(self, **kwargs)
+        if self._skip_nonlinearity:
+            return super().as_tensorflow_layer(**kwargs)
+        else:
+            class DoubleExponentialTF(NemsKerasLayer):
+                def call(self, inputs):
+                    exp = tf.math.exp(-tf.math.exp(
+                        -tf.math.exp(self.kappa) * (inputs - self.shift)
+                        ))
+                    return self.base + self.amplitude * exp
+
+            return DoubleExponentialTF(self, **kwargs)
 
 
 class RectifiedLinear(StaticNonlinearity):
@@ -318,9 +346,13 @@ class RectifiedLinear(StaticNonlinearity):
         import tensorflow as tf
         from nems.backends.tf import NemsKerasLayer
 
-        class RectifiedLinearTF(NemsKerasLayer):
-            def call(self, inputs):
-                return self.offset + self.gain * tf.nn.relu(inputs + self.shift)
+        if self._skip_nonlinearity:
+            return super().as_tensorflow_layer(**kwargs)
+        else:
+            class RectifiedLinearTF(NemsKerasLayer):
+                def call(self, inputs):
+                    rectified  = tf.nn.relu(inputs + self.shift)
+                    return self.offset + self.gain * rectified
 
         return RectifiedLinearTF(self, **kwargs)
 

@@ -3,14 +3,15 @@
 Cost function code by Alexander Tomlinson (Github: arrrobase),
 ported from a previous version of NEMS
 
+TODO: Update documentation, revise functions. Lots of hard-coded magic numbers
+      and assumptions about data format.
+
 """
 
 import numpy as np
 import tensorflow as tf
 import tensorflow.keras
 
-
-# TODO: docs, revise
 
 # Keras' built-in MSE with default options
 keras_mse = tf.keras.losses.MeanSquaredError()
