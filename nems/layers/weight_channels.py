@@ -2,7 +2,7 @@ import numpy as np
 
 from nems.registry import layer
 from nems.distributions import Normal, HalfNormal
-from .base import Layer, Phi, Parameter, ShapeError
+from .base import Layer, Phi, Parameter, ShapeError, require_shape
 
 
 # TODO: double check all shape references after dealing w/ data order etc,
@@ -33,6 +33,9 @@ class WeightChannels(Layer):
     (10000, 1)
 
     """
+    def __init__(self, **kwargs):
+        require_shape(self, kwargs, minimum_ndim=2)
+        super().__init__(**kwargs)
 
     def initial_parameters(self):
         """Get initial values for `WeightChannels.parameters`.

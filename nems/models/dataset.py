@@ -6,6 +6,8 @@ TODO: May be a better place to put this?
 
 import numpy as np
 
+from nems.tools.arrays import broadcast_dicts
+
 
 class DataSet:
     # Use these names if `input_name`, `state_name`, etc. are not specified
@@ -169,46 +171,23 @@ class DataSet:
         """
 
         # In case inputs/outputs and targets have different numbers of samples,
-        # broadcast within each category first. 
-        inputs = self._broadcast_dict(self.inputs, self.inputs, same=True)
-        outputs = self._broadcast_dict(self.outputs, self.outputs, same=True)
-        targets = self._broadcast_dict(self.targets, self.targets, same=True)
+        # broadcast within each category first.
+        inputs, outputs, targets = [
+            broadcast_dicts(d1, d1, debug_memory=self.debug_memory)
+            for d1 in [self.inputs, self.outputs, self.targets]
+        ]
 
         # Then broadcast each category to the others.
-        inputs = self._broadcast_dict(inputs, {**outputs, **targets})
-        outputs = self._broadcast_dict(outputs, {**inputs, **targets})
-        targets = self._broadcast_dict(targets, {**inputs, **outputs})
+        inputs, outputs, targets = [
+            broadcast_dicts(d1, d2, debug_memory=self.debug_memory)
+            for d1, d2 in [
+                (inputs, {**outputs, **targets}),
+                (outputs, {**inputs, **targets}),
+                (targets, {**inputs, **outputs})
+                ]
+        ]
 
         return self.modified_copy(inputs, outputs, targets)
-
-    # TODO: maybe document this as a public method, or move to general utilities?
-    #       Could be useful elsewhere.
-    def _broadcast_dict(self, d1, d2, same=False):
-        """Internal for broadcast_samples."""
-        if (len(d1) == 0) or (len(d1) == 1 and same) or (len(d2) == 0):
-            # Nothing to broadcast to
-            new_d = d1.copy()
-        else:
-            new_d = {}
-            for k, v in d1.items():
-                temp = d2.copy()
-                if k in temp:
-                    temp.pop(k)  # don't need to broadcast to self
-                for v2 in temp.values():
-                    try:
-                        # Only try to broadcast to the other array's first dim
-                        # (i.e. number of samples). If v.shape = (1, ...) and
-                        # v2.shape = (N, ...), new_v.shape = (N, ...).
-                        new_v = np.broadcast_to(v, v2.shape[:1] + v.shape[1:])
-                        if self.debug_memory:
-                            assert np.shares_memory(new_v, v)
-                        new_d[k] = new_v
-                    except ValueError:
-                        # Incompatible shape (either both arrays have multiple
-                        # samples or v has multiple and v2 has 1).
-                        new_d[k] = v
-
-        return new_d
 
     def as_batches(self, batch_size=None, permute=False):
         """Generate copies of DataSet containing single batches.

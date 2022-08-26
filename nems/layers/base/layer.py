@@ -36,8 +36,8 @@ class Layer:
 
     state_arg = None
 
-    def __init__(self, input=None, output=None, parameters=None,
-                 priors=None, bounds=None, name=None, shape=None):
+    def __init__(self, shape=None, input=None, output=None, parameters=None,
+                 priors=None, bounds=None, name=None):
         """Encapsulates one data-transformation step of a NEMS ModelSpec.
 
         Layers are intended to exist as components of a parent Model by
@@ -45,6 +45,11 @@ class Layer:
 
         Parameters
         ----------
+        shape : N-tuple of int or None; optional.
+            Most Layer subclasses use this keyword argument to specify the
+            shape of their Parameters. See individual subclasses for expected
+            format. For built-in Layers, an error will typically be raised if
+            shape is not specified.
         input : str, list, dict, or None; optional.
             Specifies which data streams should be provided as inputs by
             parent Model during evaluation, where strings refer to keys for a
@@ -80,10 +85,6 @@ class Layer:
         name : str or None; optional.
             A name for the Layer so that it can be referenced through the
             parent Model, in addition to integer indexing.
-        shape : N-tuple of int or None; optional.
-            Many Layer subclasses use this keyword argument to specify the
-            shape of their Parameters. See individual subclasses for expected
-            format.
 
         Warnings
         --------
