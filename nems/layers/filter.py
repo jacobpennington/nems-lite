@@ -3,53 +3,58 @@ import copy
 import numpy as np
 import scipy.signal
 
-from .base import Layer, Phi, Parameter
+from .base import Layer, Phi, Parameter, require_shape
 from nems.registry import layer
 from nems.distributions import Normal, HalfNormal
 
 class FiniteImpulseResponse(Layer):
-    """Convolve linear filter(s) with input.
 
-    Parameters
-    ----------
-    shape : N-tuple
-        Determines the shape of `FIR.coefficients`. Axes should be:
-        (T time bins, C input channels (rank),  ..., N output channels)
-        where only the first two dimensions are required. Aside from the
-        time and filter axes (index 0 and -1, respectively), the size of
-        each dimension must match the size of the input's dimensions.
+    def __init__(self, **kwargs):
+        """Convolve linear filter(s) with input.
 
-        If only two dimensions are present, a singleton dimension will be
-        appended to represent a single output. For higher-dimensional data,
-        users are responsible for adding this singleton dimension if needed.
+        Parameters
+        ----------
+        shape : N-tuple
+            Determines the shape of `FIR.coefficients`. Axes should be:
+            (T time bins, C input channels (rank),  ..., N output channels)
+            where only the first two dimensions are required. Aside from the
+            time and filter axes (index 0 and -1, respectively), the size of
+            each dimension must match the size of the input's dimensions.
 
-    See also
-    --------
-    nems.layers.base.Layer
+            If only two dimensions are present, a singleton dimension will be
+            appended to represent a single output. For higher-dimensional data,
+            users are responsible for adding this singleton dimension if needed.
 
-    Examples
-    --------
-    >>> fir = FiniteImpulseResponse(shape=(15,4))   # (time, input channels)
-    >>> weighted_input = np.random.rand(10000, 4)   # (time, channels)
-    >>> out = fir.evaluate(weighted_input)
-    >>> out.shape
-    (10000, 1)
+        See also
+        --------
+        nems.layers.base.Layer
 
-    # strf alias
-    >>> fir = STRF(shape=(25,18))                   # full-rank STRF
-    >>> spectrogram = np.random.rand(10000,18)
-    >>> out = fir.evaluate(spectrogram)
-    >>> out.shape
-    (10000, 1)
+        Examples
+        --------
+        >>> fir = FiniteImpulseResponse(shape=(15,4))   # (time, input channels)
+        >>> weighted_input = np.random.rand(10000, 4)   # (time, channels)
+        >>> out = fir.evaluate(weighted_input)
+        >>> out.shape
+        (10000, 1)
 
-    # FIR alias                                     
-    >>> fir = FIR(shape=(25, 4, 100))               # rank 4 FIR, 100 filters
-    >>> spectrogram = np.random.rand(10000,4)
-    >>> out = fir.evaluate(spectrogram)
-    >>> out.shape
-    (10000, 1, 100)
+        # strf alias
+        >>> fir = STRF(shape=(25, 18))                   # full-rank STRF
+        >>> spectrogram = np.random.rand(10000,18)
+        >>> out = fir.evaluate(spectrogram)
+        >>> out.shape
+        (10000, 1)
 
-    """
+        # FIR alias                                     
+        >>> fir = FIR(shape=(25, 4, 100))               # rank 4, 100 filters
+        >>> spectrogram = np.random.rand(10000,4)
+        >>> out = fir.evaluate(spectrogram)
+        >>> out.shape
+        (10000, 1, 100)
+
+        """
+        require_shape(self, kwargs, minimum_ndim=2)
+        super().__init__(**kwargs)
+
 
     def initial_parameters(self):
         """Get initial values for `FIR.parameters`.
