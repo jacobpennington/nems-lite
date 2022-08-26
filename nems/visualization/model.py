@@ -109,6 +109,9 @@ def plot_model(model, input, target=None, target_name=None, n=None,
           subfigures (possibly at arbitrary positions?) with user-generated
           content, but aligning the x-axis for those could be tricky.
 
+    TODO: SVD's version (plot_model_with_parameters) does this, can just merge
+          that logic possibly.
+
     Parameters
     ----------
     model : Model
@@ -256,7 +259,11 @@ def plot_model_with_parameters(model, input, target=None, target_name=None, n=No
                figure_kwargs=None, sampling_rate=None, time_axis='x',
                conversion_factor=1, decimals=2, plot_input=True,
                **eval_kwargs):
-    """
+    """TODO: revise doc.
+
+    TODO: Combine with plot_model and/or break out some of the copy-pasted code
+          as separate functions.
+
     Parameters
     ----------
     model : Model
@@ -413,17 +420,66 @@ def plot_model_with_parameters(model, input, target=None, target_name=None, n=No
 
     return figure
 
-def simple_strf(model, ax=None, fig=None):
+
+def simple_strf(model, fir_idx=1, wc_idx=0, ax=None, fig=None):
+    """Wrapper for `plot_strf`, gets FIR and WeightChannels from Model.
+    
+    Parameters
+    ----------
+    model : nems.models.base.Model
+        Model containing a FiniteImpulseResponse Layer and optionally a
+        WeightChannels Layer.
+    fir_idx : int; default=1.
+        Integer index of the FiniteImpulseResponse Layer.
+    wc_idx : int; defualt=0.
+        Integer index of the WeightChannels Layer, if present.
+    ax : Matplotlib axes; optional.
+        Axis on which to generate the plot.
+    fig : Matplotlib Figure; optional.
+        Figure on which to generate the plot.
+
+    Returns
+    -------
+    Matplotlib Figure
+    
+    """
+    fir_layer, wc_layer = model.layers[fir_idx, wc_idx]
+    fig = plot_strf(fir_layer, wc_layer, ax=ax, fig=fig)
+    return fig
+
+
+def plot_strf(fir_layer, wc_layer=None, ax=None, fig=None):
+    """Generate a heatmap representing a Spectrotemporal Receptive Field (STRF).
+    
+    Parameters
+    ----------
+    fir_layer : nems.layers.FiniteImpulseResponse
+        `fir_layer.coefficients.T` will be used to specify the STRF.
+    wc_layer : nems.layers.WeightChannels; optional.
+        If given, `wc_layer.coefficients @ fir_layer.coefficients.T` will be
+        used to specify the STRF (low-rank representation).
+    ax : Matplotlib axes; optional.
+        Axis on which to generate the plot.
+    fig : Matplotlib Figure; optional.
+        Figure on which to generate the plot.
+
+    Returns
+    -------
+    Matplotlib Figure
+    
+    """
     if ax is not None:
         fig = ax.figure
     else:
         if fig is None:
             fig = plt.figure()
         ax = fig.subplots(1, 1)
+    
+    if wc_layer is None:
+        strf = fir_layer.coefficients.T
+    else:
+        strf = wc_layer.coefficients @ fir_layer.coefficients.T
 
-    wc = model.layers[0].coefficients
-    fir = model.layers[1].coefficients
-    strf = wc @ fir.T
     ax.imshow(strf, aspect='auto', interpolation='none', origin='lower')
 
     return fig
