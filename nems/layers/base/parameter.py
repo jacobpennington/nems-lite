@@ -319,6 +319,16 @@ class Parameter:
         string = f"Parameter(name={self.name}, shape={self.shape})\n"
         return string
 
+    def __eq__(self, other):
+        if isinstance(other, Parameter):
+            return self.to_json() == other.to_json()
+        else:
+            return NotImplemented
+
+
+    # TODO: Maybe it would be better to leave this functionality out?
+    #       I keep running into cases where this fails and end up using
+    #       .values anyway.
 
     # Add compatibility with numpy ufuncs, len(), and other methods that
     # should point to `Parameter.values` instead of `Parameter`.
