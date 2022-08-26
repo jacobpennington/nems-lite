@@ -40,3 +40,13 @@ class TestEvaluate:
         outputs_out = fir_with_outputs.evaluate(spectrogram_with_outputs)
         # Rank dimension should be squeezed out.
         assert outputs_out.shape == (time, spectral)
+
+    def test_reapply_same_filter(self, spectrogram):
+        # Pretend spectrogram has output dimension, rank 1
+        time, spectral = spectrogram.shape
+        spectrogram_with_outputs = spectrogram.reshape(time, 1, spectral)
+        fir_no_outputs = FiniteImpulseResponse(shape=(5, 1))  # 1 implied output
+        no_outputs_out = fir_no_outputs.evaluate(spectrogram_with_outputs)
+        # Rank dimension should be squeezed out, but outputs of spectrogram
+        # should be preserved
+        assert no_outputs_out.shape == (time, spectral)

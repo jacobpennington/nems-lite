@@ -1,11 +1,11 @@
-import copy
-
 import numpy as np
 import scipy.signal
 
 from .base import Layer, Phi, Parameter, require_shape
 from nems.registry import layer
-from nems.distributions import Normal, HalfNormal
+from nems.distributions import Normal
+from nems.tools.arrays import broadcast_axes
+
 
 class FiniteImpulseResponse(Layer):
 
@@ -101,34 +101,26 @@ class FiniteImpulseResponse(Layer):
 
     def evaluate(self, input):
         """Convolve `FIR.coefficients` with input."""
+
         # Flip rank, any other dimensions except time & number of outputs.
         coefficients = self._reshape_coefficients()
-        n_filters = coefficients.shape[-1]
-
-        # Add axis for n output channels to input if one doesn't exist.
-        # NOTE: This will only catch a missing output dimension for 2D data.
-        #       For higher-dimensional data, the output dimension needs to be
-        #       specified by users.
-        if input.ndim < 3:
-            # Match number of filter outputs indicated by coefficients.
-            input = np.broadcast_to(
-                input[..., np.newaxis], input.shape + (n_filters,)
-                )
-
-        padding = self._get_filter_padding(coefficients, input)
+        # Match number of outputs in input and coefficients by broadcasting.
+        input, coefficients = self._broadcast(input, coefficients)
         # Prepend zeros.
-        #input_with_padding = np.concatenate([padding, input])
+        padding = self._get_filter_padding(input, coefficients)
         input_with_padding = np.pad(input, padding)
 
         # Convolve each filter with the corresponding input channel.
         outputs = []
+        n_filters = coefficients.shape[-1]
         for i in range(n_filters):
             y = scipy.signal.convolve(
                 input_with_padding[...,i], coefficients[...,i], mode='valid'
                 )
-            outputs.append(y[..., np.newaxis])
+            outputs.append(y)
+
         # Concatenate on n_outputs axis
-        output = np.concatenate(outputs, axis=-1)
+        output = np.stack(outputs, axis=-1)
         # Squeeze out rank dimension
         output = np.squeeze(output, axis=1)
         
@@ -169,16 +161,37 @@ class FiniteImpulseResponse(Layer):
 
         return coefficients
 
-    def _get_filter_padding(self, coefficients, input):
+    def _broadcast(self, input, coefficients):
+        """Internal for `evaluate`."""
+        # Add axis for n output channels to input if one doesn't exist.
+        # NOTE: This will only catch a missing output dimension for 2D data.
+        #       For higher-dimensional data, the output dimension needs to be
+        #       specified by users.
+        if input.ndim < 3:
+            input = input[..., np.newaxis]
+
+        if input.shape[-1] < coefficients.shape[-1]:
+            try:
+                input = broadcast_axes(input, coefficients, axis=-1)
+            except ValueError:
+                raise TypeError(
+                    "Last dimension of FIR input must match last dimension of "
+                    "coefficients, or one must be broadcastable to the other."
+                    )
+        elif coefficients.shape[-1] < input.shape[-1]:
+            try:
+                coefficients = broadcast_axes(coefficients, input, axis=-1)
+            except ValueError:
+                raise TypeError(
+                    "Last dimension of FIR input must match last dimension of "
+                    "coefficients, or one must be broadcastable to the other."
+                    )
+        
+        return input, coefficients
+
+    def _get_filter_padding(self, input, coefficients):
         """Get zeros of correct shape to prepend to input on time axis."""
-        # filter_length, n_channels = coefficients.shape[:2]
-        # other_dims = coefficients.shape[2:-1]
-        # n_outputs = coefficients.shape[-1]
-        # Pad zeros to handle boundary effects.
-        # TODO: Is there a better way to handle this?
-        # padding = np.zeros(
-        #     shape=((filter_length-1, n_channels) + other_dims + (n_outputs,))
-        #     )
+
         filter_length = coefficients.shape[0]
         # Prepend 0s on time axis, no padding on other axes
         padding = [[filter_length-1, 0]] + [[0, 0]]*(input.ndim-1)
