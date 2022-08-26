@@ -63,17 +63,21 @@ class FiniteImpulseResponse(Layer):
         ----------------
         coefficients : ndarray
             Shape matches `FIR.shape`.
-            Prior:  TODO, currently using defaults
-            Bounds: TODO
+            Prior:  Normal(mean=0, sd=1/size)
+            Bounds: (-np.inf, np.inf)
 
         Returns
         -------
         nems.layers.base.Phi
+
         """
         mean = np.full(shape=self.shape, fill_value=0.0)
         sd = np.full(shape=self.shape, fill_value=1/np.prod(self.shape))
-        mean[1, :] = 2/np.prod(self.shape)
-        mean[2, :] = -1/np.prod(self.shape)
+        # TODO: May be more appropriate to make this a hard requirement, but
+        #       for now this should stop tiny filter sizes from causing errors.
+        if mean[0, ...].size > 2:
+            mean[1, :] = 2/np.prod(self.shape)
+            mean[2, :] = -1/np.prod(self.shape)
         prior = Normal(mean, sd)
 
         coefficients = Parameter(name='coefficients', shape=self.shape,
@@ -97,16 +101,20 @@ class FiniteImpulseResponse(Layer):
 
     def evaluate(self, input):
         """Convolve `FIR.coefficients` with input."""
+        # Flip rank, any other dimensions except time & number of outputs.
+        coefficients = self._reshape_coefficients()
+        n_filters = coefficients.shape[-1]
+
         # Add axis for n output channels to input if one doesn't exist.
         # NOTE: This will only catch a missing output dimension for 2D data.
         #       For higher-dimensional data, the output dimension needs to be
         #       specified by users.
         if input.ndim < 3:
-            input = input[..., np.newaxis]
+            # Match number of filter outputs indicated by coefficients.
+            input = np.broadcast_to(
+                input[..., np.newaxis], input.shape + (n_filters,)
+                )
 
-        # Flip rank, any other dimensions except time & number of outputs.
-        coefficients = self._reshape_coefficients()
-        n_filters = coefficients.shape[-1]
         padding = self._get_filter_padding(coefficients, input)
         # Prepend zeros.
         #input_with_padding = np.concatenate([padding, input])
