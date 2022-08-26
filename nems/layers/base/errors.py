@@ -27,20 +27,17 @@ class ShapeError(Exception):
         return string
 
 
-class MissingShapeError(Exception):
-    def __init__(self, layer):
-        self.layer = layer
-    def __str__(self):
-        return f'Layer {type(self.layer).__name__} requires a `shape` kwarg.'
-
-
 def require_shape(layer, kwargs, minimum_ndim=0):
     """Raise `MissingShapeError` if `shape` is not specified."""
     shape = kwargs.get('shape', None)
-    conditions = [
-        isinstance(shape, (tuple, list)),
-        len(shape >= minimum_ndim),
-    ]
+    layer_name = type(layer).__name__
+    message = None
 
-    if not all(conditions):
-        raise MissingShapeError(layer)
+    if not isinstance(shape, (tuple, list)):
+        message = f'Layer {layer_name} requires a `shape` kwarg.'
+    elif len(shape) < minimum_ndim:
+        message = (f'Layer {layer_name}.shape must have at least '
+                   f'{minimum_ndim} dimensions.')
+
+    if message is not None:
+        raise TypeError(message)
