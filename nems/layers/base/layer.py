@@ -967,3 +967,10 @@ class Layer:
                 setattr(layer, k, v)
 
         return layer
+
+    def __eq__(self, other):
+        # Must be the same Layer subclass and have the same parameters.
+        if type(self) is type(other):
+            return self.parameters == other.parameters
+        else:
+            return NotImplemented

@@ -101,12 +101,12 @@ class Distribution:
 
         """
         name = type(self).__name__
-        d = self.__dict__
+        d = self.__dict__.copy()
         for k in list(d.keys()):
             # Remove `self.distribution`
             # and any attributes with two leading underscores
             if (k == 'distribution') or (k.startswith(f'_{name}__')):
-                del d[k]
+                _ = d.pop(k)
 
         l = [name, d]
         return l
@@ -143,3 +143,16 @@ class Distribution:
         kwargs = {'_'.join(k.split('_')[1:]): v for k, v in kwargs.items()}
         class_obj = cls.subclasses[class_name]
         return class_obj(**kwargs)
+
+    def __eq__(self, other):
+        if isinstance(other, Distribution):
+            list1 = self.tolist()
+            list2 = other.tolist()
+            conditions = [
+                (list1[0] == list2[0]),  # same subclass
+                all([(k1 == k2 and np.allclose(v1, v2)) for (k1,v1), (k2,v2) in
+                     zip(list1[1].items(), list2[1].items())])
+            ]
+            return all(conditions)
+        else:
+            return NotImplemented

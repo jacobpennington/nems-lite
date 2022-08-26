@@ -530,3 +530,22 @@ class Phi:
         #       overwrite part of new array with copy of old array
         #       copy old index
         raise NotImplementedError
+
+    def __eq__(self, other):
+        if isinstance(other, Phi):
+            try:
+                arrays_match = np.allclose(self._array, other._array)
+            except:
+                arrays_match = False
+            try:
+                masks_match = np.allclose(self._vector_mask, other._vector_mask)
+            except:
+                masks_match = False
+            conditions = [
+                arrays_match, masks_match,
+                (self._dict == other._dict),
+                (self._index == other._index)
+            ]
+            return all(conditions)
+        else:
+            return NotImplemented

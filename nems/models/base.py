@@ -1084,6 +1084,14 @@ class Model:
     
         return copied_model
 
+    def __eq__(self, other):
+        if isinstance(other, Model):
+            # Layer names don't need to match, but their content does.
+            return all([one == two for one, two in
+                        zip(self._layers.values(), other._layers.values())])
+        else:
+            return NotImplemented
+
     # Placed this code next to `_LayerDict` for easier cross-checking.
     def __getitem__(self, key):
         return self.layers[key]
