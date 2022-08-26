@@ -186,6 +186,154 @@ class WeightChannels(Layer):
         return {'legend': True}
 
 
+class WeightChannelsMulti(WeightChannels):
+    """WeightChannels specialized for multichannel input (eg, binaural)
+
+    Parameters
+    ----------
+    shape : N-tuple (usually N=3)
+
+    See also
+    --------
+    nems.layers.base.Layer
+    nems.layers.weight_channels.WeightChannels
+
+    Examples
+    --------
+    >>> wc = WeightChannelsMulti(shape=(18,4,2))
+    >>> spectrogram = np.random.rand(20000, 18, 2)  # (time, spectral_channels, ear)
+    >>> # wc.evaluate(spectrogram) equivalent...
+    >>> out = np.empty((spectrogram.shape[0],wc.shape[1],wc.shape[2]))
+    >>> for i in range(wc.shape[-1]):
+            out[:,:,i] = spectrogram[:,:,i] @ wc.coefficients[:,:,i]
+    >>> out.shape
+    (10000, 4, 2)
+
+    """
+
+    #def initial_parameters(self):
+
+    #@property
+    #def coefficients(self):
+
+    def evaluate(self, input):
+        """Multiply input(s) by WeightChannels.coefficients.
+
+        Computes $y = XA$ for each input $X$,
+        where $A$ is `WeightChannels.coefficients` and $y$ is one output.
+
+        Parameters
+        ----------
+        inputs : N-tuple of ndarray
+
+        Returns
+        -------
+        list of ndarray
+            Length of list matches number of inputs.
+
+        """
+
+        # require dim
+        #assert(input.shape[2] == self.shape[2])
+        try:
+            output = np.moveaxis(
+                np.matmul(np.rollaxis(input, 2), np.rollaxis(self.coefficients, 2)),
+                [0,1,2],[2,0,1])
+            #output = np.empty((input.shape[0],self.shape[1],self.shape[2]))
+            #for i in range(self.shape[2]):
+            #    output[:, :, i] = input[:, :, i] @ self.coefficients[:, :, i]
+        except ValueError as e:
+            # Check for dimension swap, to give more informative error message.
+            if 'shape-mismatch for sum' in str(e):
+                raise ShapeError(self, input=input.shape,
+                                 coefficients=self.coefficients.shape)
+            else:
+                # Otherwise let the original error through.
+                raise e
+
+        return output
+
+    @layer('wcb')
+    def from_keyword(keyword):
+        """Construct WeightChannels (or subclass) from keyword.
+
+        Keyword options
+        ---------------
+        {digit}x{digit}x ... x{digit} : N-dimensional shape.
+        g : Use gaussian function(s) to determine coefficients.
+
+        See also
+        --------
+        Layer.from_keyword
+
+        """
+        wc_class = WeightChannelsMulti
+        kwargs = {}
+
+        options = keyword.split('.')
+        for op in options:
+            if ('x' in op) and (op[0].isdigit()):
+                dims = op.split('x')
+                kwargs['shape'] = tuple([int(d) for d in dims])
+            elif op == 'g':
+                wc_class = GaussianWeightChannels
+
+        if 'shape' not in kwargs:
+            raise ValueError("WeightChannelsMulti requires a shape, ex: `wc.18x4x2`")
+
+        wc = wc_class(**kwargs)
+
+        return wc
+
+    def as_tensorflow_layer(self, **kwargs):
+        """TODO: docs"""
+        import tensorflow as tf
+        from nems.backends.tf import NemsKerasLayer
+
+        class WeightChannelsMultiTF(NemsKerasLayer):
+            @tf.function
+            def call(self, inputs):
+                # reshape inputs and coefficients so that mult can happen on last
+                # two dimensions. Broadcasting seems to work fine this way
+                out = tf.transpose(tf.matmul(tf.transpose(inputs,perm=[0, 3, 1,2 ]),
+                                             tf.transpose(self.coefficients, perm=[2, 0, 1])),
+                                   perm=[0, 2, 3, 1])
+                return out
+
+        return WeightChannelsMultiTF(self, **kwargs)
+
+    # @property
+    # def plot_kwargs(self):
+    #     """Add incremented labels to each output channel for plot legend.
+    #
+    #     See also
+    #     --------
+    #     Layer.plot
+    #
+    #     """
+    #     kwargs = {
+    #         'label': [f'Channel {i}' for i in range(self.shape[1])]
+    #     }
+    #     return kwargs
+
+    #@property
+    #def plot_options(self):
+        """Add legend at right of plot, with default formatting.
+
+        Notes
+        -----
+        The legend will grow quite large if there are many output channels,
+        but for common use cases (< 10) this should not be an issue. If needed,
+        increase figsize to accomodate the labels.
+
+        See also
+        --------
+        Layer.plot
+
+        """
+        return {'legend': True}
+
+
 class GaussianWeightChannels(WeightChannels):
     """As WeightChannels, but sample coefficients from gaussian functions."""
 
