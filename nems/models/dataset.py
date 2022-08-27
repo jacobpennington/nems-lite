@@ -6,7 +6,7 @@ TODO: May be a better place to put this?
 
 import numpy as np
 
-from nems.tools.arrays import broadcast_dicts
+from nems.tools.arrays import broadcast_dicts, concatenate_dicts
 
 
 class DataSet:
@@ -19,7 +19,8 @@ class DataSet:
 
     def __init__(self, input, state=None, target=None, input_name=None,
                  state_name=None, output_name=None, target_name=None,
-                 dtype=np.float64, debug_memory=False, **kwargs):
+                 dtype=np.float64, has_samples=False, debug_memory=False,
+                 **kwargs):
         """Container for tracking dictionaries of data arrays.
         
         See `Model.evaluate` and `Model.fit` for detailed documentation of
@@ -37,6 +38,13 @@ class DataSet:
         dtype : type; default=np.float64.
             TODO: WIP. Want to specify a consistent datatype to cast all
                   arrays to.
+        has_samples : bool; default=False.
+            Indicates if first dimension of inputs (and other optional data)
+            represents samples, saved as `DataSet.has_samples`. Methods that
+            add or assume a sample dimension will set this attribute to True,
+            and methods that remove a sample dimension will set this to False.
+            In most cases, this kwarg should not need to be specified at time
+            of construction.
         debug_memory : bool; default=False.
             TODO: Not actually implemented yet.
             If True, check `np.shares_memory(array, copied_array)` in several
@@ -67,9 +75,25 @@ class DataSet:
             if name is None: name = getattr(self, f'default_{attr}')
             setattr(self, f'{attr}_name', name)
         self.dtype = dtype
+        self.has_samples = has_samples
         self.debug_memory = debug_memory
         # TODO: how to use dtype
         self.initialize_data(input, state, target)  # other kwargs too
+
+    @property
+    def n_samples(self):
+        """Get size of first dimension of first input.
+        
+        If `DataSet.has_samples` is `False`, this method returns `None` to
+        indicate that the number of samples is not known. Either there is no
+        sample dimension, or there is but `DataSet` doesn't know about it.
+        
+        """
+        if self.has_samples:
+            n_samples = list(self.inputs.values())[0].shape[0]
+        else:
+            n_samples = None
+        return n_samples
 
     def initialize_data(self, input, state=None, target=None):
         """Package data into dictionaries, store in attributes.
@@ -187,7 +211,10 @@ class DataSet:
                 ]
         ]
 
-        return self.modified_copy(inputs, outputs, targets)
+        copy = self.modified_copy(inputs, outputs, targets)
+        copy.has_samples = True
+
+        return copy
 
     def as_batches(self, batch_size=None, permute=False):
         """Generate copies of DataSet containing single batches.
@@ -213,7 +240,12 @@ class DataSet:
         This implementation results in a list of views into the original data
         (i.e. memory is shared). If changes are made, make sure the new version
         doesn't result in copies (which could increase memory usage
-        dramatically). 
+        dramatically).
+
+        Warnings
+        --------
+        This method assumes the first dimension of all data arrays represents
+        samples. Unexpected behavior will result if this assumption is invalid.
         
         """
 
@@ -222,6 +254,7 @@ class DataSet:
         #       to do some kind of tiling that may have side-effects that I'm
         #       not thinking of, and I'm not sure if this would be useful.
         d = self.as_broadcasted_samples()
+        d.has_samples = True
         
         # Split data into batches along first axis. Should end up with a list
         # of arrays with shape (B, T, N), where B is `batch_size` (i.e. number
@@ -287,6 +320,11 @@ class DataSet:
         ------
         DataSet
 
+        Warnings
+        --------
+        If this method is used on a DataSet that is *not* in the format yielded
+        by `DataSet.as_batches`, unexpected behavior will result.
+
         """
 
         n_samples = len(list(self.inputs.values())[0])
@@ -305,31 +343,30 @@ class DataSet:
 
     def prepend_samples(self):
         """Prepend a singleton sample dimension."""
-        return self.apply(lambda v: v[np.newaxis,...], allow_copies=False)
+        data = self.apply(lambda v: v[np.newaxis,...], allow_copies=False)
+        data.has_samples = True
+        return data
 
     def squeeze_samples(self):
         """Remove singleton sample dimension from all arrays."""
-        return self.apply(lambda v: np.squeeze(v, axis=0), allow_copies=False)
+        data = self.apply(lambda v: np.squeeze(v, axis=0), allow_copies=False)
+        data.has_samples = False
+        return data
 
-    # TODO: Looks like there's no way to concatenate numpy views without
-    #       creating copies, since views can be non-continguous. So instead,
-    #       only concatenating outputs (which have to be new arrays anyway
-    #       by definition). But if we can figure out a way to concatenate
-    #       inputs and targets without duplicating memory, this should just
-    #       return a modified copy with all the inputs, outputs and targets
-    #       concatenated instead.
     @staticmethod
     def concatenate_sample_outputs(data_sets):
-        outputs = {}
-        for d in data_sets:
-            for k, v in d.outputs.items():
-                if k not in outputs:
-                    outputs[k] = []
-                outputs[k].append(v)
-        concatenated = {k: np.concatenate(v, axis=0)
-                        for k, v in outputs.items()}
+        """Concatenate key-matched arrays from each `data_set.outputs`.
+        
+        Parameters
+        ----------
+        data_sets : list of DataSet
 
-        return concatenated
+        Returns
+        -------
+        dict of ndarray, in the format of `DataSet.outputs`.
+        
+        """
+        return concatenate_dicts(*[d.outputs for d in data_sets])
 
     def modified_copy(self, inputs, outputs, targets):
         """Get a shallow copy of DataSet with new data dictionaries.

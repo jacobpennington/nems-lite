@@ -89,3 +89,40 @@ def broadcast_dicts(d1, d2, axis=0, debug_memory=False):
         new_d = d1.copy()
 
     return new_d
+
+
+def concatenate_dicts(*dicts, axis=0, newaxis=False):
+    """Concatenate key-matched arrays in `dicts` along `axis`.
+    
+    Parameters
+    ----------
+    dicts : N-tuple of dict of np.ndarray.
+        Each dict should have the format `{k: arrary}`. All dicts must contain
+        the same keys. All arrays at the same key must have the same shape on
+        all dimensions except `axis`.
+    newaxis : bool; default=False.
+        If True, use `np.stack` instead of `np.concatenate`, which will add
+        a new axis to concatenate on at the indicated position. All dimensions
+        of arrays at the same key must have the same shape, without exception.
+
+    Returns
+    -------
+    dict of ndarray, in the format of `{k: concatenated_array}`.
+
+    Notes
+    -----
+    This function will output array copies, even if the arrays in `dicts` are
+    views. So far as I can tell, this is an unavoidable limitation from NumPy
+    due to the fact that views can be non-continguous in memory, while the
+    concatenated arrays must be contiguous.
+    
+    """
+
+    listed = {k: [d[k] for d in dicts] for k in dicts[0].keys()}
+    if newaxis:
+        fn = np.stack
+    else:
+        fn = np.concatenate
+    concatenated = {k: fn(v, axis=0) for k, v in listed.items()}
+
+    return concatenated
