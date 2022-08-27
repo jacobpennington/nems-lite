@@ -39,15 +39,15 @@ class TensorFlowBackend(Backend):
             )
 
         # Get input/output mappings and keras layers.
-        data_maps = self.nems_model.get_data_maps()
-        tf_kwargs = {}  # TODO, regularizer etc.
-        tf_layers = [layer.as_tensorflow_layer(**tf_kwargs)
-                        for layer in self.nems_model.layers]
-        input = data.inputs
+        # data_maps = self.nems_model.get_data_maps()
+        # tf_layers = [layer.as_tensorflow_layer(**tf_kwargs)
+        #                 for layer in self.nems_model.layers]
+        # TODO: support data with no sample dimension
+        inputs = data.inputs
 
         # Convert inputs to TensorFlow format
         tf_input_dict = {}
-        for k, v in input.items():
+        for k, v in inputs.items():
             # Skip trial/sample dimension when determining shape.
             tf_in = Input(shape=v.shape[1:], name=k, batch_size=batch_size,
                           dtype='float32')  # TODO: don't hard-code float32
@@ -57,11 +57,13 @@ class TensorFlowBackend(Backend):
         # Pass through Keras functional API to map inputs & outputs.
         last_output = None
         tf_data = tf_input_dict.copy()  # Need to keep actual Inputs separate
-        for layer in tf_layers:
+        tf_kwargs = {}  # TODO, regularizer etc.
+        for layer in self.nems_model.layers:
             # Get all `data` keys associated with Layer args and kwargs
             # TODO: how are Layers supposed to know which one is which?
             #       have to check the name?
-            layer_map = data_maps[layer.name]
+            #layer_map = data_maps[layer.name]
+            layer_map = layer.data_map
             all_data_keys = layer_map.args + list(layer_map.kwargs.values())
             all_data_keys = np.array(all_data_keys).flatten().tolist()
 
@@ -79,7 +81,13 @@ class TensorFlowBackend(Backend):
             # TODO: need to do something with tf.keras.layers.concatenate
             #       when there are multiple inputs. Adding the [0] for now because
             #       singleton lists mess up some of the Layers.
-            last_output = layer(layer_inputs[0])
+            # Construct TF layer, provide input_shape for Layers that need that
+            # extra information.
+            input_shape = keras.backend.int_shape(layer_inputs[0])
+            tf_layer = layer.as_tensorflow_layer(
+                input_shape=input_shape, **tf_kwargs
+                )
+            last_output = tf_layer(layer_inputs[0])
             
             if isinstance(last_output, (list, tuple)):
                 tf_data.update(
@@ -185,7 +193,7 @@ class TensorFlowBackend(Backend):
         #       Need to tweak this to be able to fit outputs from multiple
         #       layers. _build would need to establish a mapping I guess, since
         #       it has the information about which layer generates which output.
-        input = data.inputs
+        inputs = data.inputs
         if len(data.targets) > 1:
             raise NotImplementedError("Only one target supported currently.")
         target = list(data.targets.values())[0]
@@ -196,12 +204,11 @@ class TensorFlowBackend(Backend):
         #       But that causes different errors...
         initial_error = loss_fn(
             tf.constant(target, dtype=tf.float32),
-            tf.constant(self.model.predict(input), dtype=tf.float32)
+            tf.constant(self.model.predict(inputs), dtype=tf.float32)
             ).numpy()
-        # initial_error = 'TODO'
         
         history = self.model.fit(
-            input, {final_layer: target}, epochs=epochs,
+            inputs, {final_layer: target}, epochs=epochs,
             validation_split=validation_split, callbacks=callbacks,
             validation_data=validation_data
         )

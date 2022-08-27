@@ -686,6 +686,10 @@ class Model:
         data = DataSet(
             input, target=target, target_name=target_name, **eval_kwargs
             )
+        if eval_kwargs.get('batch_size', 0) != 0:
+            # Broadcast prior to passing to Backend so that those details
+            # only have to be tracked once.
+            data = data.as_broadcasted_samples()
         # Evaluate once prior to fetching backend, to ensure all DataMaps are
         # up to date and include outputs.
         _ = self.evaluate(
