@@ -33,11 +33,8 @@ class TensorFlowBackend(Backend):
 
         batch_size = eval_kwargs.get('batch_size', None)
         if batch_size == 0:
-            # TODO: support data with no sample dimension
-            raise NotImplementedError(
-                "TensorFlow currently requires a sample dimension, add one "
-                "to inputs and use `batch_size=None`."
-            )
+            data = data.prepend_samples()
+            batch_size = None
 
         if batch_size is not None:
             raise NotImplementedError(
@@ -161,6 +158,11 @@ class TensorFlowBackend(Backend):
         FitResults
 
         """
+
+        batch_size = eval_kwargs.get('batch_size', 0)
+        if batch_size == 0:
+            data = data.prepend_samples()
+            batch_size = None
 
         # Replace cost_function name with function object.
         if isinstance(cost_function, str):
