@@ -277,11 +277,13 @@ class RectifiedLinear(StaticNonlinearity):
         # TODO: explain choice of prior.
         zero = np.zeros(shape=self.shape)
         one = np.ones(shape=self.shape)
-        prior = {'mean': zero-0.1, 'sd': one/np.sqrt(self.shape[0])}
+        shift_prior = {'mean': zero+0.05, 'sd': one/100}
+        offset_prior = {'mean': zero-0.05, 'sd': one/100}
+        gain_prior = {'mean': one, 'sd': one/100}
         phi = Phi(
-            Parameter('shift', shape=self.shape, prior=Normal(**prior)),
-            Parameter('offset', shape=self.shape),
-            Parameter('gain', shape=self.shape)
+            Parameter('shift', shape=self.shape, prior=Normal(**shift_prior)),
+            Parameter('offset', shape=self.shape, prior=Normal(**offset_prior)),
+            Parameter('gain', shape=self.shape, prior=Normal(**gain_prior))
             )
 
         return phi
@@ -299,7 +301,7 @@ class RectifiedLinear(StaticNonlinearity):
         
         """
         shift, offset, gain = self.get_parameter_values()
-        rectified = input * (input > -shift)
+        rectified = (input+shift) * (input > -shift)
         return offset + gain*rectified
 
     @layer('relu')
