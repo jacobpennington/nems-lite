@@ -32,17 +32,19 @@ class TensorFlowBackend(Backend):
         # TODO: what backend options to accept?
 
         batch_size = eval_kwargs.get('batch_size', None)
+        if batch_size == 0:
+            # TODO: support data with no sample dimension
+            raise NotImplementedError(
+                "TensorFlow currently requires a sample dimension, add one "
+                "to inputs and use `batch_size=None`."
+            )
+
         if batch_size is not None:
             raise NotImplementedError(
                 "tf.tensordot is failing for multiple batches b/c the axis "
                 "numbers shift. Need to fix that before this will work."
             )
 
-        # Get input/output mappings and keras layers.
-        # data_maps = self.nems_model.get_data_maps()
-        # tf_layers = [layer.as_tensorflow_layer(**tf_kwargs)
-        #                 for layer in self.nems_model.layers]
-        # TODO: support data with no sample dimension
         inputs = data.inputs
 
         # Convert inputs to TensorFlow format
@@ -62,7 +64,6 @@ class TensorFlowBackend(Backend):
             # Get all `data` keys associated with Layer args and kwargs
             # TODO: how are Layers supposed to know which one is which?
             #       have to check the name?
-            #layer_map = data_maps[layer.name]
             layer_map = layer.data_map
             all_data_keys = layer_map.args + list(layer_map.kwargs.values())
             all_data_keys = np.array(all_data_keys).flatten().tolist()
@@ -199,9 +200,6 @@ class TensorFlowBackend(Backend):
         target = list(data.targets.values())[0]
 
         loss_fn = self.model.loss[final_layer]
-        # TODO: The nems0 loss functions don't allow passing in ndarray
-        #       directly, have to package as tensors?
-        #       But that causes different errors...
         initial_error = loss_fn(
             tf.constant(target, dtype=tf.float32),
             tf.constant(self.model.predict(inputs), dtype=tf.float32)

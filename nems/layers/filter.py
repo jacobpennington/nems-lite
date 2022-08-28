@@ -145,8 +145,7 @@ class FiniteImpulseResponse(Layer):
 
         return coefficients
 
-    @staticmethod
-    def _unshape_coefficients(coefficients, shape):
+    def _unshape_coefficients(self, coefficients, shape):
         """Revert re-formatted `coefficients` to their original shape."""
         # Reverse the axis flips
         flipped_axes = [1]
@@ -227,37 +226,172 @@ class FiniteImpulseResponse(Layer):
 
         return fir
     
-    def as_tensorflow_layer(self, **kwargs):
-        """TODO: docs"""
+    def as_tensorflow_layer(self, input_shape, **kwargs):
+        """Convert FiniteImpulseResponse to a TensorFlow Keras Layer.
+        
+        Parameters
+        ----------
+        inputs : tf.Tensor or np.ndarray
+            Initial input to Layer, supplied by TensorFlowBackend during model
+            building.
+        
+        Returns
+        -------
+        FiniteImpulseResponseTF
+        
+        """
+
         import tensorflow as tf
-        from nems.backends.tf import Bounds, NemsKerasLayer
+        from nems.backends.tf import NemsKerasLayer
 
         old_c = self.parameters['coefficients']
         # TODO: Not clear why flipping time axis is needed, something funky with
         #       tensorflow's conv1d implementation.
         new_c = np.flip(self._reshape_coefficients(), axis=0)
-        filter_width, rank, n_outputs = new_c.shape
+        filter_width, rank, _ = new_c.shape
         if new_c.ndim > 3:
             raise NotImplementedError(
                 "FIR TF implementation currently only works for 2D data."
                 )
+
+        # Define broadcasting behavior for inputs and coefficients based on
+        # input_shape and new_c.shape.
+        broadcast_inputs, broadcast_coefficients, n_outputs = \
+            self._define_tf_broadcasting(
+                tf, input_shape, new_c
+                )
+
+        # Define convolution operation, depends on whether a GPU is available.
+        convolve = self._define_tf_convolution(
+            tf, filter_width, rank, n_outputs
+            )
+
         fir = self  # so that this can be referenced inside class definition
         new_values = {'coefficients': new_c}  # override Parameter.values
+
+        class FiniteImpulseResponseTF(NemsKerasLayer):
+            def weights_to_values(self):
+                c = self.parameter_values['coefficients']
+                unflipped = np.flip(c, axis=0)  # Undo flip time
+                unshaped = fir._unshape_coefficients(unflipped, old_c.shape)
+                
+                return {'coefficients': unshaped}
+
+            def call(self, inputs):
+                # This will add an extra dim if there is no output dimension.
+                input_width = tf.shape(inputs)[1]
+                # Broadcast output shape if needed.
+                inputs = broadcast_inputs(inputs)
+                coefficients = broadcast_coefficients(self.coefficients)
+                # Make None shape explicit
+                rank_4 = tf.reshape(inputs, [-1, input_width, rank, n_outputs])
+                return convolve(rank_4, coefficients)
+
+        return FiniteImpulseResponseTF(self, new_values=new_values, **kwargs)
+
+
+    def _define_tf_broadcasting(self, tf, input_shape, new_c):
+        """Internal for `as_tensorflow_layer`.
+        
+        Builds `broadcast_inputs` and `broadcast_coefficients` for use inside
+        `call` method.
+
+        Parameters
+        ----------
+        tf : package
+            Reference to imported TensorFlow package.
+        input_shape : tuple
+            Shape of inputs.
+        new_c : np.ndarray
+            Reshaped coefficients.
+
+        Returns
+        -------
+        broadcast_inputs : function
+        broadcast_coefficients : function
+        n_outputs : int
+            Number of broadcasted outputs.
+
+        """
+
+        # Fake input to set up correct broadcasting behavior.
+        # Only the number of outputs matters, this drops the batch dimension.
+        # TODO: This might mess up with multiple batches similar to WC?
+        #       Need to check if list?
+        fake_inputs = np.empty(shape=input_shape[1:])
+        new_inputs, broadcast_c = self._broadcast(fake_inputs, new_c)
+        new_coefs_shape = list(new_c.shape[:-1]) + [broadcast_c.shape[-1]]
+        new_inputs_shape = list(new_inputs.shape)
+        n_outputs = new_coefs_shape[-1]
+
+        if new_inputs_shape[-1] > input_shape[-1]:
+            # If output dimension increased, then TF needs to broadcast output
+            # dimension of input in call function.
+            if new_inputs.ndim > fake_inputs.ndim:
+                # A singleton output dimension needs to be appended as well.
+                @tf.function
+                def expand_inputs(inputs):
+                    return tf.expand_dims(inputs, axis=-1)
+            else:
+                @tf.function
+                def expand_inputs(inputs):
+                    return inputs
+
+            @tf.function()
+            def broadcast_inputs(inputs):
+                # Convert None batch shape to int, add singleton output dim
+                # if needed. Then broadcast outputs.
+                batch_size = tf.keras.backend.shape(inputs)[0]
+                shape = [batch_size] + new_inputs_shape
+                return tf.broadcast_to(expand_inputs(inputs), shape)
+        else:
+            # Otherwise, don't need to do anything to inputs.
+            @tf.function
+            def broadcast_inputs(inputs):
+                # This will still add a singleton output dim if needed.
+                #return tf.reshape(inputs, new_inputs_shape)
+                return inputs
+
+        if new_coefs_shape[-1] > new_c.shape[-1]:
+            # Coefficients outputs increased, need to broadcast coefs in call.
+            @tf.function
+            def broadcast_coefficients(coefficients):
+                return tf.broadcast_to(coefficients, new_coefs_shape)
+        else:
+            # Otherwise, don't need to do anything to coefficients.
+            @tf.function
+            def broadcast_coefficients(coefficients): return coefficients
+        
+        return broadcast_inputs, broadcast_coefficients, n_outputs
+
+    def _define_tf_convolution(self, tf, filter_width, rank, n_outputs):
+        """Internal for `as_tensorflow_layer`.
+        
+        Builds `convolution` function for use in `call` method.
+
+        Parameters
+        ----------
+        tf : package
+            Reference to imported TensorFlow package.
+        filter_width, rank, n_outputs : coefficient shape components 
+
+        Returns
+        -------
+        convolution : function
+        
+        """
 
         num_gpus = len(tf.config.list_physical_devices('GPU'))
         if num_gpus == 0:
             # Use CPU-compatible (but slower) version.
             @tf.function
-            def call_fn(self, inputs):
+            def convolve(inputs, coefficients):
                 # Reorder coefficients to shape (n outputs, time, rank, 1)
                 new_coefs = tf.expand_dims(
-                    tf.transpose(self.coefficients, [2, 0, 1]), -1
-                    )  
-                # This will add an extra dim if there is no output dimension.
-                input_width = tf.shape(inputs)[1]
-                rank_4 = tf.reshape(inputs, [-1, input_width, rank, n_outputs])
+                    tf.transpose(coefficients, [2, 0, 1]), -1
+                    )
                 padded_input = tf.pad(
-                    rank_4, [[0,0], [filter_width-1,0], [0,0], [0,0]]
+                    inputs, [[0,0], [filter_width-1,0], [0,0], [0,0]]
                     )
                 # Reorder input to shape (n outputs, batch, time, rank)
                 x = tf.transpose(padded_input, [3, 0, 1, 2])
@@ -276,13 +410,10 @@ class FiniteImpulseResponse(Layer):
         else:
             # Use GPU-only version (grouped convolutions), much faster.
             @tf.function
-            def call_fn(self, inputs):
-                # filter_width, rank, n_outputs are constants defined above.
+            def convolve(inputs, coefficients):
                 input_width = tf.shape(inputs)[1]
-                # This will add an extra dim if there is no output dimension.
-                rank_4 = tf.reshape(inputs, [-1, input_width, rank, n_outputs])
                 # Reshape will group by output before rank w/o transpose.
-                transposed = tf.transpose(rank_4, [0, 1, 3, 2])
+                transposed = tf.transpose(inputs, [0, 1, 3, 2])
                 # Collapse rank and n_outputs to one dimension.
                 # -1 for batch size b/c it can be None.
                 reshaped = tf.reshape(
@@ -294,22 +425,11 @@ class FiniteImpulseResponse(Layer):
                     )
                 # Convolve filters with input slices in groups of size `rank`.
                 y = tf.nn.conv1d(
-                    padded_input, self.coefficients, stride=1, padding='VALID'
+                    padded_input, coefficients, stride=1, padding='VALID'
                     )
-                return y  
+                return y 
 
-
-        class FiniteImpulseResponseTF(NemsKerasLayer):
-            def weights_to_values(self):
-                c = self.parameter_values['coefficients']
-                unflipped = np.flip(c, axis=0)  # Undo flip time
-                unshaped = fir._unshape_coefficients(unflipped, old_c.shape)
-                return {'coefficients': unshaped}
-
-            def call(self, inputs):
-                return call_fn(self, inputs)
-
-        return FiniteImpulseResponseTF(self, new_values=new_values, **kwargs)
+        return convolve
 
 
 # Aliases, STRF specifically for full-rank (but not enforced)

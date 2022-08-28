@@ -141,14 +141,19 @@ class WeightChannels(Layer):
         return wc
 
     def as_tensorflow_layer(self, **kwargs):
-        """TODO: docs"""
+        """TODO: docs
+        
+        NOTE: This is currently hard-coded to dot the 2nd dim of the input
+        (batch, time, channels, ...) and first dim of coefficients
+        (channels, rank, ...).
+        
+        """
         import tensorflow as tf
         from nems.backends.tf import NemsKerasLayer
 
         class WeightChannelsTF(NemsKerasLayer):
             @tf.function
             def call(self, inputs):
-                # Add an n_outputs dimension to input if one is not present.
                 out = tf.tensordot(inputs, self.coefficients, axes=[[2], [0]])
                 return out
         
