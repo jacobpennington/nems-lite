@@ -331,10 +331,11 @@ class Phi:
 
         """
         samples = [p.sample(inplace=inplace) for p in self._dict.values()]
-        if as_vector:
-            unravelled = [np.ravel(s) for s in samples]
-            samples = np.concatenate(unravelled)
-        return samples
+        if not inplace:
+            if as_vector:
+                unravelled = [np.ravel(s) for s in samples]
+                samples = np.concatenate(unravelled)
+            return samples
 
     def mean(self, inplace=False, as_vector=True):
         """Get, or set parameter values to, mean of priors.
@@ -355,10 +356,11 @@ class Phi:
 
         """
         means = [p.mean(inplace=inplace) for p in self._dict.values()]
-        if as_vector:
-            unravelled = [np.ravel(m) for m in means]
-            means = np.concatenate(unravelled)
-        return means
+        if not inplace:
+            if as_vector:
+                unravelled = [np.ravel(m) for m in means]
+                means = np.concatenate(unravelled)
+            return means
 
 
     def set_index(self, i, new_index='initial'):

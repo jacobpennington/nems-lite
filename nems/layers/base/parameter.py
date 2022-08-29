@@ -185,7 +185,8 @@ class Parameter:
                 pass
             else:
                 self.update(sample)
-        return sample
+        else:
+            return sample
 
     def mean(self, inplace=False):
         """Get, or set parameter values to, mean of `Parameter.prior`.
@@ -214,8 +215,8 @@ class Parameter:
                 pass
             else:
                 self.update(mean)
-
-        return mean
+        else:
+            return mean
 
     def update(self, value, ignore_bounds=False):
         """Set `Parameters.values` to `value` by updating `Phi._array`.

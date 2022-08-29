@@ -835,61 +835,67 @@ class Model:
         for k, v in layer_dict.items():
             self.layers[k].set_parameter_values(v)
 
-    def sample_from_priors(self, inplace=True, as_vector=False):
-        """Get or set new parameter values by sampling from priors.
+    def sample_from_priors(self, n=1):
+        """Get a copy of `Model` with new parameter values sampled from priors.
         
         Parameters
         ----------
-        inplace : bool, default=True
-            If True, sampled values will be used to update each Parameter
-            inplace. Otherwise, the sampled values will be returned without
-            changing current values.
-        as_vector : bool, default=False
-            If True, return sampled values as a flattened vector instead of a
-            list of arrays.
+        n : int; default=1.
+            For `n > 1`, a list of `n` Model copies will be returned. This
+            option is ignored if `inplace=True`.
 
         Returns
         -------
-        samples : ndarray or list of ndarray
+        Model, list of Model.
 
         See also
         --------
         nems.layers.base.Layer.sample_from_priors
 
         """
-        samples = [l.sample_from_priors(inplace=inplace, as_vector=as_vector)
-                   for l in self.layers]
-        if as_vector:
-            samples = np.concatenate(samples)
-        return samples
 
-    def mean_of_priors(self, inplace=True, as_vector=False):
-        """Get, or set parameter values to, mean of priors.
+        m = self
+        model_copies = []
+        for i in range(n):
+            # Can't copy all from self, otherwise samples will be the same.
+            m = m.copy()
+            for layer in m.layers:
+                layer.sample_from_priors(inplace=True)
+            model_copies.append(m)
+        if n == 1:
+            # Remove singleton list wrapper
+            model_copies = model_copies[0]
+
+        return model_copies
+
+    def mean_of_priors(self, n=1):
+        """Get a copy of `Model` with parameters set to mean of priors..
         
         Parameters
         ----------
-        inplace : bool, default=True
-            If True, mean values will be used to update each Parameter
-            (and, in turn, `Phi._array`) inplace. Otherwise, means
-            will be returned without changing current values.
-        as_vector : bool, default=False
-            If True, return means as a flattened vector instead of a
-            list of arrays.
+        n : int; default=1.
+            For `n > 1`, a list of `n` Model copies will be returned. This
+            option is ignored if `inplace=True`.
 
         Returns
         -------
-        means : ndarray or list of ndarray
+        Model, list of Model.
 
         See also
         --------
-        nems.layers.base.Phi.mean
+        nems.layers.base.Layer.mean_of_priors
 
         """
-        means = [l.mean_of_priors(inplace=inplace, as_vector=as_vector)
-                 for l in self.layers]
-        if as_vector:
-            means = np.concatenate(means)
-        return means
+
+        model_copies = [self.copy() for i in range(n)]
+        for m in model_copies:
+            for layer in m.layers:
+                layer.mean_of_priors(inplace=True)
+        if n == 1:
+            # Remove singleton list wrapper
+            model_copies = model_copies[0]
+
+        return model_copies
 
     def set_index(self, index, new_index='initial'):
         """Change which set of parameter values is referenced.
