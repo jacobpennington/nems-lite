@@ -3,7 +3,7 @@ import numpy as np
 
 from nems.registry import layer
 from nems.distributions import Normal
-from .base import Layer, Phi, Parameter
+from .base import Layer, Phi, Parameter, require_shape
 
 
 class StaticNonlinearity(Layer):
@@ -15,7 +15,7 @@ class StaticNonlinearity(Layer):
     ----------
     shape : N-tuple of int (usually N=1)
         Determines the shape of each Parameter in `.parameters`.
-        First dimension should match the spectral dimenion of the input.
+        First dimension should match the last dimension of the input.
         Note that higher-dimesional shapes are also allowed, but overall
         Layer design is intended for 1-dimensional shapes.
 
@@ -28,6 +28,7 @@ class StaticNonlinearity(Layer):
     """
 
     def __init__(self, **kwargs):
+        require_shape(self, kwargs, minimum_ndim=1)
         super().__init__(**kwargs)
         self._skip_nonlinearity = False
         self._unfrozen_parameters = []
@@ -125,7 +126,7 @@ class LevelShift(StaticNonlinearity):
 
         Keyword options
         ---------------
-        {digit}x{digit}x ... x{digit} : N-dimensional shape.
+        {digit}x{digit}x ... x{digit} : N-dimensional shape; required.
 
         Returns
         -------
@@ -137,6 +138,7 @@ class LevelShift(StaticNonlinearity):
 
         """
         options = keyword.split('.')
+        shape = None
         for op in options[1:]:
             if op[0].isdigit():
                 dims = op.split('x')
@@ -206,7 +208,7 @@ class DoubleExponential(StaticNonlinearity):
 
         Keyword options
         ---------------
-        {digit}x{digit}x ... x{digit} : N-dimensional shape.
+        {digit}x{digit}x ... x{digit} : N-dimensional shape; required.
 
         Returns
         -------
@@ -217,7 +219,7 @@ class DoubleExponential(StaticNonlinearity):
         Layer.from_keyword
         
         """
-        shape = ()
+        shape = None
         options = keyword.split('.')
         for op in options[1:]:
             if op[0].isdigit():
@@ -310,7 +312,7 @@ class RectifiedLinear(StaticNonlinearity):
 
         Keyword options
         ---------------
-        {digit}x{digit}x ... x{digit} : N-dimensional shape.
+        {digit}x{digit}x ... x{digit} : N-dimensional shape; required.
 
         Returns
         -------
@@ -325,6 +327,8 @@ class RectifiedLinear(StaticNonlinearity):
         no_shift = True
         no_offset = True
         no_gain = True
+        shape=None
+
         for op in options[1:]:
             if op[0].isdigit():
                 dims = op.split('x')
