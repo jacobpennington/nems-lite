@@ -109,8 +109,8 @@ def test_model(model1, model2, model3):
     assert model1 != model3  # layers not equal
     model4 = model1.copy()
     assert model1 == model4  # copies should be equal to each other
-    _ = model4.sample_from_priors()
-    assert model1 != model4  # if parameters change, layers shouldn't be equal
+    model5 = model4.sample_from_priors()
+    assert model1 != model5  # if parameters change, layers shouldn't be equal
 
 def test_keywords():
     keyword_string = 'wc.18x1-fir.15x1-dexp.1'
