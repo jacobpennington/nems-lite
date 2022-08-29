@@ -2,7 +2,8 @@ import pytest
 import numpy as np
 
 from nems.tools.arrays import (
-    broadcast_axis_shape, broadcast_axes, broadcast_dicts, concatenate_dicts
+    broadcast_axis_shape, broadcast_axes, broadcast_dicts, concatenate_dicts,
+    apply_to_dict
     )
 
 
@@ -77,3 +78,22 @@ def test_concatenate_dicts(spectrogram_with_samples, response_with_samples):
     assert d5['x'].shape[:-1] == response_with_samples.shape
     assert d5['y'].ndim == spectrogram_with_samples.ndim + 1
     assert d5['y'].shape[:-1] == spectrogram_with_samples.shape
+
+
+def test_apply_dict(spectrogram, response):
+    d1 = {'input': spectrogram, 'target': response}
+    # Add 1 to all arrays
+    f1 = lambda a: a + 1
+    d2 = apply_to_dict(f1, d1)
+    assert np.allclose(d2['input'], spectrogram + 1)
+    assert np.allclose(d2['target'], response + 1)
+
+    # Should pass shape (-1,) as arg, flatten all arrays
+    d3 = apply_to_dict(np.reshape, d1, (-1,))
+    assert d3['input'].shape[0] == spectrogram.size
+    assert d3['target'].shape[0] == response.size
+
+    # Pass fill_value as kwarg, replace with all 5's
+    d4 = apply_to_dict(np.full_like, d1, fill_value=5)
+    assert np.allclose(d4['input'], np.full_like(spectrogram, fill_value=5))
+    assert np.allclose(d4['target'], np.full_like(response, fill_value=5))

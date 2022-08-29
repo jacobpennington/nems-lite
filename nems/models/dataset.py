@@ -6,7 +6,7 @@ TODO: May be a better place to put this?
 
 import numpy as np
 
-from nems.tools.arrays import broadcast_dicts, concatenate_dicts
+from nems.tools.arrays import broadcast_dicts, concatenate_dicts, apply_to_dict
 
 
 class DataSet:
@@ -420,21 +420,10 @@ class DataSet:
         
         """
         inputs, outputs, targets = [
-            self._apply_to_dict(fn, d, *args, allow_copies=allow_copies,
-                                **kwargs)
+            apply_to_dict(fn, d, *args, allow_copies=allow_copies, **kwargs)
             for d in [self.inputs, self.outputs, self.targets]
             ]
         return self.modified_copy(inputs, outputs, targets)
-    
-    def _apply_to_dict(self, fn, d, *args, allow_copies=True, **kwargs):
-        """Internal for `DataSet.apply`."""
-        new_d = d.copy()
-        for k, v in new_d.items():
-            new_v = fn(v, *args, **kwargs)
-            if not allow_copies:
-                assert np.shares_memory(new_v, v)
-            new_d[k] = new_v
-        return new_d
 
     def assert_no_copies(self, inputs, outputs, targets):
         """Check if arrays in dictionaries share memory with arrays in DataSet.

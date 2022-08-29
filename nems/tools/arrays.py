@@ -137,3 +137,40 @@ def concatenate_dicts(*dicts, axis=0, newaxis=False):
     concatenated = {k: fn(v, axis=axis) for k, v in listed.items()}
 
     return concatenated
+
+
+def apply_to_dict(fn, d, *args, allow_copies=True, **kwargs):
+        """Maps {k: v} -> {k: fn(v, *args, **kwargs)} for all k, v in dict `d`.
+        
+        Parameters
+        ----------
+        fn : callable
+            Must accept a single ndarray as its first positional argument.
+        d : dict of ndarrays.
+            Dictionary containing arrays that `fn` will be applied to.
+        args : N-tuple
+            Additional positional arguments for `fn`.
+        allow_copies : bool; default=True.
+            If False, raise AssertionError if `fn(v, *args, **kwargs)` returns
+            an array that does not share memory with `v`. Useful for debugging
+            if you're uncertain whether `fn` will return copies or views.
+        kwargs : dict
+            Additional keyword arguments for `fn`.
+
+        Returns
+        -------
+        dict of ndarray
+            Same keys as `d`, with values replaced by output of `fn`.
+
+        Examples
+        --------
+        TODO
+        
+        """
+        new_d = {}
+        for k, v in d.items():
+            new_v = fn(v, *args, **kwargs)
+            if not allow_copies:
+                assert np.shares_memory(new_v, v)
+            new_d[k] = new_v
+        return new_d
