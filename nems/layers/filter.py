@@ -273,8 +273,9 @@ class FiniteImpulseResponse(Layer):
             def weights_to_values(self):
                 c = self.parameter_values['coefficients']
                 unflipped = np.flip(c, axis=0)  # Undo flip time
-                unshaped = fir._unshape_coefficients(unflipped, old_c.shape)
-                
+                #unshaped = fir._unshape_coefficients(unflipped, old_c.shape)
+                unshaped = np.reshape(unflipped, old_c.shape)
+
                 return {'coefficients': unshaped}
 
             def call(self, inputs):
