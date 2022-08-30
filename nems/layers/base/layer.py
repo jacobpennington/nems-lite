@@ -150,6 +150,7 @@ class Layer:
 
         self.initial_priors = priors
         self.initial_bounds = bounds
+        if shape is not None: shape = tuple(shape)
         self.shape = shape
         # In the event of a name clash in a Model, an integer will be appended
         # to `Layer.name` to ensure that all Layer names are unique.

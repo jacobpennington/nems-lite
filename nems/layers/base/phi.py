@@ -170,6 +170,7 @@ class Phi:
         else:
             _dct = kwargs
         for k, v in _dct.items():
+            if v is not None: v = tuple(v)
             self._dict[k].bounds = v
 
     @property
@@ -488,7 +489,9 @@ class Phi:
         phi = cls(*json['args'])
         for k, v in json['attributes'].items():
             setattr(phi, k, v)
-        phi.freeze_parameters(*json['frozen_parameters'])
+        frozen = json['frozen_parameters']
+        if len(frozen) > 0:
+            phi.freeze_parameters(*json['frozen_parameters'])
         return phi
 
     def from_dict(dct, default_bounds='infinite'):
