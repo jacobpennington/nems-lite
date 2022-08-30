@@ -141,7 +141,10 @@ class Distribution:
         class_name, kwargs = json['data']
         # remove first leading underscore kwargs keys, if any
         kwargs = {'_'.join(k.split('_')[1:]): v for k, v in kwargs.items()}
-        class_obj = cls.subclasses[class_name]
+        if class_name == 'Distribution':
+            class_obj = Distribution
+        else:
+            class_obj = cls.subclasses[class_name]
         return class_obj(**kwargs)
 
     def __eq__(self, other):

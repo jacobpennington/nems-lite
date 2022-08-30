@@ -959,7 +959,10 @@ class Layer:
         `nems.tools.json`.
 
         """
-        subclass = cls.subclasses[json['class_name']]
+        if json['class_name'] == 'Layer':
+            subclass = Layer
+        else:
+            subclass = cls.subclasses[json['class_name']]
         if subclass.from_json.__qualname__ != Layer.from_json.__qualname__:
             # Subclass has overwritten `from_json`, use that method instead.
             layer = subclass.from_json()
