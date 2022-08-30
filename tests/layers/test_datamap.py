@@ -2,6 +2,7 @@ import pytest
 import numpy as np
 
 from nems import Model
+from nems.models.dataset import DataSet
 from nems.layers import Layer
 
 
@@ -100,4 +101,4 @@ def test_evaluate():
     # First layer input gets overwritten if None
     assert model.layers[0].data_map.args == ['input']
     # Last layer output overwritten if None
-    assert model.layers[-1].data_map.out == ['output']
+    assert model.layers[-1].data_map.out == [DataSet.default_output]

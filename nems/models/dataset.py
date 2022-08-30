@@ -339,7 +339,9 @@ class DataSet:
             targets = {k: v[i].squeeze(axis=0) for k, v in s_targets.items()}
             if self.debug_memory:
                 self.assert_no_copies(inputs, outputs, targets)
-            yield self.modified_copy(inputs, outputs, targets)
+            sample = self.modified_copy(inputs, outputs, targets)
+            sample.has_samples = False
+            yield sample
 
     def prepend_samples(self):
         """Prepend a singleton sample dimension."""
@@ -383,9 +385,10 @@ class DataSet:
         
         """
         data = DataSet(
-            inputs, state=None, target=targets, dtype=self.dtype,
-            input_name=self.input_name, state_name=self.state_name,
-            output_name=self.output_name, target_name=self.target_name
+            inputs, state=None, target=targets, input_name=self.input_name,
+            state_name=self.state_name, output_name=self.output_name,
+            target_name=self.target_name, dtype=self.dtype,
+            has_samples=self.has_samples,
             )
         data.outputs = outputs
         return data
