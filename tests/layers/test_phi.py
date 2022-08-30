@@ -2,6 +2,7 @@ import numpy as np
 
 from nems import Model
 from nems.layers.base import Phi, Parameter
+from nems.distributions import Beta
 
 
 def test_phi_bounds():
@@ -26,3 +27,20 @@ def test_phi_bounds():
     # Last index should be the only one out of range
     assert sum(phi.get_indices_outof_range(vector)) == 1
     assert phi.get_indices_outof_range(vector)[-1]
+
+
+def test_phi_from_dict():
+    dct = {
+    'values': {'test1': 5.0, 'test2': np.array([5, 3, 7, 19])},
+    'prior': {'test1': Beta(alpha=0.1, beta=0.3), 'test2': None},
+    'bounds': {'test1': None, 'test2': (-5, 100)}
+    }
+    phi1 = Phi.from_dict(dct)
+    
+    phi2 = Phi(
+        Parameter('test1', prior=Beta(alpha=0.1, beta=0.3), bounds=None,
+                  initial_value=5),
+        Parameter('test2', shape=(4,), prior=None, bounds=(-5, 100),
+                  initial_value=np.array([5, 3, 7, 19]))
+    )
+    assert phi1 == phi2
