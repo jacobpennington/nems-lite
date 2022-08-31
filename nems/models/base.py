@@ -117,6 +117,54 @@ class Model:
         """Get all Model priors as a dict. See `Layer.priors`."""
         return {k: v.priors for k, v in self.layers.items()}
 
+    @property
+    def parameter_count(self):
+        """Total size of all Parameters from all Layers.
+        
+        Note that this is the total number of all parameter values, *not* the
+        number of Parameter objects. I.e. a model with a single Parameter of
+        shape (2,3) has a parameter_count of 6.
+        TODO: rename this to avoid ambiguity? value_count? 
+
+        Returns
+        -------
+        int
+
+        See also
+        --------
+        Model.parameter_info
+        nems.layers.base.Layer.parameter_count
+        
+        """
+        return sum([layer.parameter_count for layer in self.layers])
+
+    @property
+    def parameter_info(self):
+        """Sizes of frozen, unfrozen and permanent parameters.
+        
+        Returns
+        -------
+        dict
+            {'layer_name':  # per layer
+                {'total': int, 'unfrozen': int, 'frozen': int, 'permanent': int},
+                ...
+             'model':       # model totals
+                {'total': int, unfrozen': int, ... }  # etc.
+                }
+
+        See also
+        --------
+        Model.parameter_count
+        nems.layers.base.Layer.parameter_info
+        
+        """
+        info = {layer.name: layer.parameter_info for layer in self.layers}
+        model_info = {k: sum([d[k] for d in info.values()])
+                      for k in list(info.values())[0]}
+        info['model'] = model_info
+
+        return info
+
     def add_layers(self, *layers):
         """Add Layers to this Model, stored in `Model._layers`.
 

@@ -181,6 +181,36 @@ class Layer:
             name = self.default_name
         return name
 
+    @property
+    def parameter_count(self):
+        """Total size of all Parameters.
+        
+        TODO: rename? (see note in Model.parameter_count)
+        
+        """
+
+        return self.parameters.size
+
+    @property
+    def parameter_info(self):
+        """Sizes of frozen, unfrozen and permanent parameters.
+        
+        Returns
+        -------
+        dict
+            {'total': int, 'unfrozen': int, 'frozen': int, 'permanent': int}
+
+        """
+
+        total = self.parameters.size
+        unfrozen = self.parameters.unfrozen_size
+        frozen = total - unfrozen
+        permanent = sum([p.is_permanent*p.size for p in self.parameters])
+
+        # TODO: rename unfrozen -> trainable, frozen -> untrainable?
+        return {'total': total, 'unfrozen': unfrozen, 'frozen': frozen,
+                'permanent': permanent}
+
     @layer('baseclass')
     def from_keyword(keyword):
         """Construct a Layer corresponding to a registered keyword.
