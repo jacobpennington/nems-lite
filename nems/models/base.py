@@ -1102,18 +1102,6 @@ class Model:
         else:
             return NotImplemented
 
-    # Placed this code next to `_LayerDict` for easier cross-checking.
-    def __getitem__(self, key):
-        return self.layers[key]
-
-    def __len__(self):
-        """Define `len(Model) = <number of layers in the Model>`."""
-        return len(self.layers)
-
-    def __iter__(self):
-        """Reroute iteration functions to Model.layers.__iter__."""
-        return self.layers.__iter__()
-
 
 class _LayerDict:
     """Wrapper for Layer._layers to enable fancy-indexed gets.

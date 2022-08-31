@@ -7,7 +7,7 @@ from nems.distributions import Beta
 
 def test_phi_bounds():
     m = Model.from_keywords('wc.18x4.g')  # 8 parameters
-    phi = m['wc'].parameters
+    phi = m.layers['wc'].parameters
     assert len(phi.get_bounds_vector()) == 8
     lower1, upper1 = (0, 1)
     lower2, upper2 = (0, 2)

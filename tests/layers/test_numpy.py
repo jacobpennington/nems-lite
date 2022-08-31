@@ -27,7 +27,7 @@ def test_numpy_ops():
     a = np.arange(10)
     b = np.sum(a)
     model = Model.from_keywords('np.sum')
-    c = model['np.sum'].evaluate(a)
+    c = model.layers['np.sum'].evaluate(a)
     assert np.allclose(b, c)
 
     # Should be no bounds
@@ -39,10 +39,10 @@ def test_numpy_ops():
     e = np.ones(shape=(3,5))*2
     f = np.matmul(d,e)
     model2 = Model.from_keywords('np.matmul')
-    g = model2['np.matmul'].evaluate(d, e)
+    g = model2.layers['np.matmul'].evaluate(d, e)
     assert np.allclose(f, g)
 
     h = np.transpose(g, axes=[1,0])
     model3 = Model.from_keywords('np.transpose.axes[1,0]')
-    i = model3['np.transpose'].evaluate(g)
+    i = model3.layers['np.transpose'].evaluate(g)
     assert np.allclose(h, i)
