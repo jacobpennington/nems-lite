@@ -182,7 +182,6 @@ class Layer:
         return name
 
     @layer('baseclass')
-    @staticmethod
     def from_keyword(keyword):
         """Construct a Layer corresponding to a registered keyword.
 
@@ -201,9 +200,7 @@ class Layer:
            characters, etc). Keyword heads are typically short and all
            lowercase, but this is not enforced.
         2) `from_keyword` must be a static method (i.e. it receives neither
-           `cls` nor `self` as an implicit argument). The `@staticmethod`
-           decorator is also necessary since the method will normally be
-           invoked without a reference to the relevant Layer.
+           `cls` nor `self` as an implicit argument).
         3) `from_keyword` must accept a single argument. Within the keyword
            system, this argument will be a string of the form:
            `'{head}.{option1}.{option2}...'`
