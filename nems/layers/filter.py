@@ -145,21 +145,6 @@ class FiniteImpulseResponse(Layer):
 
         return coefficients
 
-    def _unshape_coefficients(self, coefficients, shape):
-        """Revert re-formatted `coefficients` to their original shape."""
-        # Reverse the axis flips
-        flipped_axes = [1]
-        other_dims = coefficients.shape[2:-1]
-        for i, d in enumerate(other_dims):
-            # Also flip any additional dimensions
-            flipped_axes.append(i+2)
-        coefficients = np.flip(coefficients, axis=flipped_axes)
-
-        # Remove dummy filter axis if not originally present
-        coefficients = np.reshape(coefficients, shape)
-
-        return coefficients
-
     def _broadcast(self, input, coefficients):
         """Internal for `evaluate`."""
         # Add axis for n output channels to input if one doesn't exist.
@@ -245,14 +230,17 @@ class FiniteImpulseResponse(Layer):
         from nems.backends.tf import NemsKerasLayer
 
         old_c = self.parameters['coefficients']
-        # TODO: Not clear why flipping time axis is needed, something funky with
-        #       tensorflow's conv1d implementation.
-        new_c = np.flip(self._reshape_coefficients(), axis=0)
+        coefficients = self.coefficients
+        if coefficients.ndim == 2:
+            # Add a dummy filter/output axis
+            coefficients = coefficients[..., np.newaxis]
+        new_c = np.flip(coefficients, axis=0)
         filter_width, rank, _ = new_c.shape
         if new_c.ndim > 3:
             raise NotImplementedError(
                 "FIR TF implementation currently only works for 2D data."
                 )
+        new_values = {'coefficients': new_c}  # override Parameter.values
 
         # Define broadcasting behavior for inputs and coefficients based on
         # input_shape and new_c.shape.
@@ -260,20 +248,15 @@ class FiniteImpulseResponse(Layer):
             self._define_tf_broadcasting(
                 tf, input_shape, new_c
                 )
-
         # Define convolution operation, depends on whether a GPU is available.
         convolve = self._define_tf_convolution(
             tf, filter_width, rank, n_outputs
             )
 
-        fir = self  # so that this can be referenced inside class definition
-        new_values = {'coefficients': new_c}  # override Parameter.values
-
         class FiniteImpulseResponseTF(NemsKerasLayer):
             def weights_to_values(self):
                 c = self.parameter_values['coefficients']
                 unflipped = np.flip(c, axis=0)  # Undo flip time
-                #unshaped = fir._unshape_coefficients(unflipped, old_c.shape)
                 unshaped = np.reshape(unflipped, old_c.shape)
 
                 return {'coefficients': unshaped}
