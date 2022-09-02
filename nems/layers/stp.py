@@ -7,7 +7,7 @@ class ShortTermPlasticity(Layer):
 
     def __init__(self, **kwargs):
         require_shape(self, kwargs, minimum_ndim=1)
-        super().__init__()
+        super().__init__(**kwargs)
 
     def initial_parameters(self):
         u = Parameter('u', shape=self.shape)
