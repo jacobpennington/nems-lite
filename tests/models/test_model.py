@@ -161,3 +161,13 @@ def test_freeze_layers(spectrogram):
     # Evaluation shouldn't change.
     assert np.allclose(out, unfrozen_out)
 
+
+def test_frozen_bounds():
+    # Relu.1 has 3 frozen (permanent) parameters by default
+    model = Model.from_keywords(f'wc.18x4-fir.15x4-relu.1')
+    p_info = model.parameter_info
+    assert p_info['relu']['frozen'] == 3
+    assert len(model.get_parameter_vector(as_list=True)) == \
+        model.parameter_count - 3
+    assert len(model.get_bounds_vector()) == \
+        model.parameter_count - 3

@@ -312,6 +312,8 @@ class Phi:
             p = self._dict[k]
             p.update(v)
             p.make_permanent()
+        
+        self._update_vector_mask()
 
     def sample(self, inplace=False, as_vector=True):
         """Get or set new parameter values by sampling from priors.
