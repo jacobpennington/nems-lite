@@ -89,6 +89,7 @@ class KeywordRegistry:
 
         """
         self.keywords = {}
+        self.list = []
         self.name = name
         self.warn_on_overwrite = warn_on_overwrite
         self.set_obj_name = set_obj_name
@@ -112,12 +113,13 @@ class KeywordRegistry:
 
         return obj
 
-    def __setitem__(self, kw_head, parse):
+    def __setitem__(self, kw_head, parse, source=None):
         if kw_head in self.keywords and self.warn_on_overwrite:
             raise RuntimeWarning(
                 f'Keyword: {kw_head} overwritten in registry: {self.name}'
                 )
-        self.keywords[kw_head] = Keyword(kw_head, parse)
+        self.keywords[kw_head] = Keyword(kw_head, parse, source_string=source)
+        self.list.append(f'{kw_head}:    {source}')
 
     def kw_head(self, kw_string):
         """Identifies the leading portion of a keyword string.
@@ -194,6 +196,7 @@ class KeywordRegistry:
             location = str(obj.__name__)
             
         self.keywords[name] = Keyword(name, obj, location)
+        self.list.append(f'{name}:    {location}')
 
     def __iter__(self):
         """Iterate over registered keywords."""
