@@ -10,5 +10,6 @@ from .filter import FiniteImpulseResponse, FIR, STRF
 from .weight_channels import WeightChannels, WeightChannelsGaussian
 from .state import StateGain
 from .numpy import NumPy
+from .stp import ShortTermPlasticity, STP
 
 from .base import Layer, Phi, Parameter

@@ -233,7 +233,6 @@ class DoubleExponential(StaticNonlinearity):
         import tensorflow as tf
         from nems.backends.tf import NemsKerasLayer
 
-
         if self._skip_nonlinearity:
             return super().as_tensorflow_layer(**kwargs)
         else:
