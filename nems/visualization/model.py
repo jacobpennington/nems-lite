@@ -357,7 +357,12 @@ def plot_model_with_parameters(model, input, target=None, target_name=None, n=No
     for i, (layer, pax, ax, info) in iterator:
 
         k = list(layer.parameters.keys())
-        if 'coefficients' in k:
+        if layer.name=='fir':
+            if (i>0) & (layers[i-1].name=='wc'):
+                plot_strf(layer, wc_layer=layers[i-1], ax=pax)
+            else:
+                plot_strf(layer, ax=pax)
+        elif 'coefficients' in k:
             pax.plot(layer.coefficients, lw=0.5)
             x_pos = pax.get_xlim()[0]
             y_pos = pax.get_ylim()[1]
@@ -416,7 +421,7 @@ def plot_model_with_parameters(model, input, target=None, target_name=None, n=No
         last_ax.legend(**_DEFAULT_PLOT_OPTIONS['legend_kwargs'])
         last_ax.autoscale()
 
-    figure.suptitle(model.name, fontsize=10)
+    figure.suptitle(f"{model.name} cc={model.meta.get('r_test',[0])[0]}", fontsize=10)
 
     return figure
 

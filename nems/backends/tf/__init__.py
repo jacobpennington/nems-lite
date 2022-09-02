@@ -2,6 +2,7 @@
 
 import tensorflow as tf
 
+
 gpus = tf.config.list_physical_devices('GPU')
 if gpus:
   try:
@@ -13,6 +14,7 @@ if gpus:
   except RuntimeError as e:
     # Memory growth must be set before GPUs have been initialized
     print(e)
+
 
 from .backend import TensorFlowBackend
 from .layer_tools import NemsKerasLayer, Bounds
