@@ -7,7 +7,7 @@ Ex: `from nems.modules import WeightChannels, FIR, DoubleExponential`
 
 from .nonlinearity import LevelShift, DoubleExponential, RectifiedLinear, ReLU
 from .filter import FiniteImpulseResponse, FIR, STRF
-from .weight_channels import WeightChannels, GaussianWeightChannels
+from .weight_channels import WeightChannels, WeightChannelsGaussian
 from .state import StateGain
 from .numpy import NumPy
 

@@ -6,7 +6,7 @@ TODO: May be a better place to put this?
 
 import numpy as np
 
-from nems.tools.arrays import broadcast_dicts, concatenate_dicts
+from nems.tools.arrays import broadcast_dicts, concatenate_dicts, apply_to_dict
 
 
 class DataSet:
@@ -339,7 +339,9 @@ class DataSet:
             targets = {k: v[i].squeeze(axis=0) for k, v in s_targets.items()}
             if self.debug_memory:
                 self.assert_no_copies(inputs, outputs, targets)
-            yield self.modified_copy(inputs, outputs, targets)
+            sample = self.modified_copy(inputs, outputs, targets)
+            sample.has_samples = False
+            yield sample
 
     def prepend_samples(self):
         """Prepend a singleton sample dimension."""
@@ -383,9 +385,10 @@ class DataSet:
         
         """
         data = DataSet(
-            inputs, state=None, target=targets, dtype=self.dtype,
-            input_name=self.input_name, state_name=self.state_name,
-            output_name=self.output_name, target_name=self.target_name
+            inputs, state=None, target=targets, input_name=self.input_name,
+            state_name=self.state_name, output_name=self.output_name,
+            target_name=self.target_name, dtype=self.dtype,
+            has_samples=self.has_samples,
             )
         data.outputs = outputs
         return data
@@ -420,21 +423,10 @@ class DataSet:
         
         """
         inputs, outputs, targets = [
-            self._apply_to_dict(fn, d, *args, allow_copies=allow_copies,
-                                **kwargs)
+            apply_to_dict(fn, d, *args, allow_copies=allow_copies, **kwargs)
             for d in [self.inputs, self.outputs, self.targets]
             ]
         return self.modified_copy(inputs, outputs, targets)
-    
-    def _apply_to_dict(self, fn, d, *args, allow_copies=True, **kwargs):
-        """Internal for `DataSet.apply`."""
-        new_d = d.copy()
-        for k, v in new_d.items():
-            new_v = fn(v, *args, **kwargs)
-            if not allow_copies:
-                assert np.shares_memory(new_v, v)
-            new_d[k] = new_v
-        return new_d
 
     def assert_no_copies(self, inputs, outputs, targets):
         """Check if arrays in dictionaries share memory with arrays in DataSet.

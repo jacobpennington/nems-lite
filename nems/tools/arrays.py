@@ -45,7 +45,12 @@ def broadcast_axes(array1, array2, axis=0):
 
     """
     broadcasted_shape = broadcast_axis_shape(array1, array2, axis=axis)
-    new_array = np.broadcast_to(array1, broadcasted_shape)
+    if broadcasted_shape[axis] == array1.shape[axis]:
+        # Don't waste time broadcasting if the shape is the same.
+        new_array = array1
+    else:
+        new_array = np.broadcast_to(array1, broadcasted_shape)
+
     return new_array
 
 
@@ -72,20 +77,26 @@ def broadcast_dicts(d1, d2, axis=0, debug_memory=False):
 
     new_d = {}
     for k, v in d1.items():
-        temp = d2.copy()
-        for v2 in temp.values():
-            if (v.shape[axis] == 1) and (v2.shape[axis] > 1):
-                # Broadcasting is possible.
-                new_v = broadcast_axes(v, v2, axis=axis)
-                if debug_memory:
-                    assert np.shares_memory(new_v, v)
-                new_d[k] = new_v
+        if v.shape[axis] != 1:
+            # Can't broadcast
+            new_d[k] = v
+        else:
+            for v2 in d2.values():
+                if v2.shape[axis] > 1:
+                    # Broadcasting is possible.
+                    new_v = broadcast_axes(v, v2, axis=axis)
+                    if debug_memory:
+                        assert np.shares_memory(new_v, v)
+                    new_d[k] = new_v
+                    # Shape on axis no longer 1, can only broadcast once.
+                    break
             else:
-                # Incompatible shape for broadcasting.
-                new_d[k] = v
+                if k not in new_d:
+                    # No compatible arrays for broadcasting.
+                    new_d[k] = v
     
     if len(new_d) == 0:
-        # There was nothing to broadcast to
+        # There was nothing to broadcast
         new_d = d1.copy()
 
     return new_d
@@ -123,6 +134,43 @@ def concatenate_dicts(*dicts, axis=0, newaxis=False):
         fn = np.stack
     else:
         fn = np.concatenate
-    concatenated = {k: fn(v, axis=0) for k, v in listed.items()}
+    concatenated = {k: fn(v, axis=axis) for k, v in listed.items()}
 
     return concatenated
+
+
+def apply_to_dict(fn, d, *args, allow_copies=True, **kwargs):
+        """Maps {k: v} -> {k: fn(v, *args, **kwargs)} for all k, v in dict `d`.
+        
+        Parameters
+        ----------
+        fn : callable
+            Must accept a single ndarray as its first positional argument.
+        d : dict of ndarrays.
+            Dictionary containing arrays that `fn` will be applied to.
+        args : N-tuple
+            Additional positional arguments for `fn`.
+        allow_copies : bool; default=True.
+            If False, raise AssertionError if `fn(v, *args, **kwargs)` returns
+            an array that does not share memory with `v`. Useful for debugging
+            if you're uncertain whether `fn` will return copies or views.
+        kwargs : dict
+            Additional keyword arguments for `fn`.
+
+        Returns
+        -------
+        dict of ndarray
+            Same keys as `d`, with values replaced by output of `fn`.
+
+        Examples
+        --------
+        TODO
+        
+        """
+        new_d = {}
+        for k, v in d.items():
+            new_v = fn(v, *args, **kwargs)
+            if not allow_copies:
+                assert np.shares_memory(new_v, v)
+            new_d[k] = new_v
+        return new_d

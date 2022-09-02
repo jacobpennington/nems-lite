@@ -2,23 +2,28 @@ import numpy as np
 
 from nems.registry import layer
 from nems.distributions import Normal
-from .base import Layer, Phi, Parameter
+from .base import Layer, Phi, Parameter, require_shape
 
 
 class StateGain(Layer):
-    """Docs TODO.
-    
-    Parameters
-    ----------
-    shape : N-tuple of int
-
-    Examples
-    --------
-    TODO
-    
-    """
     
     state_arg = 'state'  # see Layer docs for details
+
+    def __init__(self, **kwargs):
+        """Docs TODO.
+        
+        Parameters
+        ----------
+        shape : 2-tuple of int.
+            (size of last dimension of state, size of last dimension of input)
+
+        Examples
+        --------
+        TODO
+        
+        """
+        require_shape(self, kwargs, minimum_ndim=2)
+        super().__init__(**kwargs)
 
     def initial_parameters(self):
         """Docs TODO
@@ -54,19 +59,13 @@ class StateGain(Layer):
         
         Parameters
         ----------
-        inputs : N-tuple of ndarray
-            Data to be modulated by state, typically the output(s) of a previous
-            Layer. At least one input is expected.
-        state : ndarray or list of ndarray
-            State data to modulate input(s) with. If list or dict, entries will
-            be concatenated along axis 1 in the order they are provided.
+        input : ndarray
+            Data to be modulated by state, typically the output of a previous
+            Layer.
+        state : ndarray
+            State data to modulate input with.
 
         """
-
-        # TODO: take this out? sounds like it woudln't be super useful.
-        if isinstance(state, list):
-            # Concatenate along channel axis
-            state = np.concatenate(state, axis=1)
 
         gain, offset = self.get_parameter_values()
         return np.matmul(state, gain) * input + np.matmul(state, offset)
@@ -89,6 +88,7 @@ class StateGain(Layer):
         """
         # TODO: other options from old NEMS
         options = keyword.split('.')
+        shape = None
         for op in options[1:]:
             if op[0].isdigit():
                 dims = op.split('x')

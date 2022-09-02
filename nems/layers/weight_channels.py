@@ -130,7 +130,7 @@ class WeightChannels(Layer):
                 dims = op.split('x')
                 kwargs['shape'] = tuple([int(d) for d in dims])
             elif op == 'g':
-                wc_class = GaussianWeightChannels
+                wc_class = WeightChannelsGaussian
             elif op == 'b':
                 wc_class = WeightChannelsMulti
 
@@ -254,11 +254,11 @@ class WeightChannelsMulti(WeightChannels):
         return WeightChannelsMultiTF(self, **kwargs)
 
 
-class GaussianWeightChannels(WeightChannels):
+class WeightChannelsGaussian(WeightChannels):
     """As WeightChannels, but sample coefficients from gaussian functions."""
 
     def initial_parameters(self):
-        """Get initial values for `GaussianWeightChannels.parameters`.
+        """Get initial values for `WeightChannelsGaussian.parameters`.
 
         Layer parameters
         ----------------
@@ -337,7 +337,7 @@ class GaussianWeightChannels(WeightChannels):
         new_values = {'sd': sd*10}
         new_bounds = {'sd': (sd_lower, sd_upper*10)}
 
-        class GaussianWeightChannelsTF(NemsKerasLayer):
+        class WeightChannelsGaussianTF(NemsKerasLayer):
             def call(self, inputs):
                 # TODO: docs. Explain (at least briefly) why this is the same thing.
 
@@ -365,5 +365,5 @@ class GaussianWeightChannels(WeightChannels):
 
         # TODO
         raise NotImplementedError("Tensorflow wc.g is still a WIP")
-        return GaussianWeightChannelsTF(self, new_values=new_values,
+        return WeightChannelsGaussianTF(self, new_values=new_values,
                                         new_bounds=new_bounds, **kwargs)

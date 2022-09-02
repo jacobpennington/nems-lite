@@ -89,6 +89,7 @@ class KeywordRegistry:
 
         """
         self.keywords = {}
+        self.list = []
         self.name = name
         self.warn_on_overwrite = warn_on_overwrite
         self.set_obj_name = set_obj_name
@@ -96,17 +97,29 @@ class KeywordRegistry:
     def __getitem__(self, kw_string):
         kw = self.lookup(kw_string)
         obj = kw.parse(kw_string)
-        if (self.set_obj_name) and (obj._name is None):
-            kw_head = kw_string.split('.')[0]
-            obj._name = kw_head
+
+        if (self.set_obj_name):
+            # Type check is done this way to avoid circular import issues.
+            inheritance_list = inspect.getmro(type(obj))
+            checks = [cls.__name__.split('.')[-1] != 'Layer'
+                      for cls in inheritance_list]
+            if all(checks):
+                raise TypeError(
+                    '@layer functions must return a Layer instance.'
+                    )
+            if obj._name is None:
+                kw_head = kw_string.split('.')[0]
+                obj._name = kw_head
+
         return obj
 
-    def __setitem__(self, kw_head, parse):
+    def __setitem__(self, kw_head, parse, source=None):
         if kw_head in self.keywords and self.warn_on_overwrite:
             raise RuntimeWarning(
                 f'Keyword: {kw_head} overwritten in registry: {self.name}'
                 )
-        self.keywords[kw_head] = Keyword(kw_head, parse)
+        self.keywords[kw_head] = Keyword(kw_head, parse, source_string=source)
+        self.list.append(f'{kw_head}:    {source}')
 
     def kw_head(self, kw_string):
         """Identifies the leading portion of a keyword string.
@@ -157,16 +170,25 @@ class KeywordRegistry:
         """Fetch the definition location for `kw_string`."""
         return self.lookup(kw_string).source_string
 
-    def register_function(self, obj, name=None):
-        """Add function `obj` to the registry."""
+    def register_function(self, obj, name=None, obj_type=None):
+        """Add function `obj` to the registry.
+        
+        Parameters
+        ----------
+        obj : callable
+        name : str; optional.
+            Name of KeyWord to store in registry. Defaults to `obj.__name__`.
+        obj_type : str; optional.
+            If specified, raise TypeError if `type(obj).__name__` does not match
+            `obj_type`. String specification is used to avoid circular imports
+            for decorators.
+
+        """
+
         if name is None:
             name = obj.__name__
         log.debug("%s lib registering function: %s", self.name, name)
         
-        # If obj has an underlying __func__, use that instead to avoid
-        # error from staticmethod not having __module__ or __name__ attributes.
-        # TODO: not clear why this error started popping up.
-        obj = getattr(obj, '__func__', obj)
         try:
             # Default to module rather than file, to maintain portability.
             location = str(obj.__module__) + "." + obj.__name__
@@ -174,6 +196,7 @@ class KeywordRegistry:
             location = str(obj.__name__)
             
         self.keywords[name] = Keyword(name, obj, location)
+        self.list.append(f'{name}:    {location}')
 
     def __iter__(self):
         """Iterate over registered keywords."""
@@ -228,6 +251,22 @@ def layer(name=None):
     
     """
     def decorator(func):
-        keyword_lib.register_function(func, name=name)
+        # If func has an underlying __func__, use that instead to avoid
+        # error from staticmethod not having __module__ or __name__ attributes.
+        func = getattr(func, '__func__', func)
+
+        # Raise error if func doesn't accept any arguments.
+        try:
+            args = inspect.getfullargspec(func)
+            _ = args[0]
+        except TypeError:
+            raise TypeError(
+                f'Keyword {name} must accept a keyword string '
+                'as its first argument.'
+            )
+
+        # If there aren't any syntax errors, register the keyword.
+        keyword_lib.register_function(func, name=name, obj_type='Layer')
         return func
+
     return decorator

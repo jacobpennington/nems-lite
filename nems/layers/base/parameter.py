@@ -88,13 +88,16 @@ class Parameter:
                     f"default_bounds: {default_bounds}\n"
                     "Accepted values are 'percentile' or 'infinite'."
                     )
+        else:
+            bounds = tuple(bounds)
+
         if zero_to_epsilon:
             # Swap 0 with machine epsilon for float32
             eps = np.finfo(np.float32).eps
             lower, upper = bounds
             lower = eps if lower == 0 else lower
             upper = eps if upper == 0 else upper
-            bounds = lower, upper
+            bounds = (lower, upper)
 
         self.bounds = bounds
 

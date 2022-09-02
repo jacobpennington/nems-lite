@@ -47,8 +47,8 @@ spectrogram, response, pupil_size = my_data_loader('/path/to/my/data.csv')
 model = Model()
 model.add_layers(
     STRF(shape=(25,18)),  # Full-rank STRF, 25 temporal x 18 spectral bins
-    DoubleExponential(),  # Double-exponential nonlinearity
-    StateGain()
+    DoubleExponential(1,),  # Double-exponential nonlinearity
+    StateGain(1,1)
 )
 # TODO: Not actually sure where the StateGain layer should go, but I think this
 #       is appropriate? Ask Stephen to be sure.
@@ -142,7 +142,7 @@ target = resp
 layers = [
     WeightChannels(shape=(18,4), parameterization='gaussian', input='stimulus'),
     FIR(shape=(4, 25), parameterization='P3Z1'),
-    DoubleExponential(output='LN_output'),
+    DoubleExponential(shape=(4,), output='LN_output'),
     Sum(input=['LN_output', 'state', 'pupil'],
                     output='summed_output'),
     LinearWeighting(input={'pred': 'summed_output', 'pupil': 'pupil',

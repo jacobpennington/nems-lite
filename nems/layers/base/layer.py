@@ -150,6 +150,7 @@ class Layer:
 
         self.initial_priors = priors
         self.initial_bounds = bounds
+        if shape is not None: shape = tuple(shape)
         self.shape = shape
         # In the event of a name clash in a Model, an integer will be appended
         # to `Layer.name` to ensure that all Layer names are unique.
@@ -180,8 +181,37 @@ class Layer:
             name = self.default_name
         return name
 
+    @property
+    def parameter_count(self):
+        """Total size of all Parameters.
+        
+        TODO: rename? (see note in Model.parameter_count)
+        
+        """
+
+        return self.parameters.size
+
+    @property
+    def parameter_info(self):
+        """Sizes of frozen, unfrozen and permanent parameters.
+        
+        Returns
+        -------
+        dict
+            {'total': int, 'unfrozen': int, 'frozen': int, 'permanent': int}
+
+        """
+
+        total = self.parameters.size
+        unfrozen = self.parameters.unfrozen_size
+        frozen = total - unfrozen
+        permanent = sum([p.is_permanent*p.size for p in self.parameters])
+
+        # TODO: rename unfrozen -> trainable, frozen -> untrainable?
+        return {'total': total, 'unfrozen': unfrozen, 'frozen': frozen,
+                'permanent': permanent}
+
     @layer('baseclass')
-    @staticmethod
     def from_keyword(keyword):
         """Construct a Layer corresponding to a registered keyword.
 
@@ -200,9 +230,7 @@ class Layer:
            characters, etc). Keyword heads are typically short and all
            lowercase, but this is not enforced.
         2) `from_keyword` must be a static method (i.e. it receives neither
-           `cls` nor `self` as an implicit argument). The `@staticmethod`
-           decorator is also necessary since the method will normally be
-           invoked without a reference to the relevant Layer.
+           `cls` nor `self` as an implicit argument).
         3) `from_keyword` must accept a single argument. Within the keyword
            system, this argument will be a string of the form:
            `'{head}.{option1}.{option2}...'`
@@ -958,7 +986,10 @@ class Layer:
         `nems.tools.json`.
 
         """
-        subclass = cls.subclasses[json['class_name']]
+        if json['class_name'] == 'Layer':
+            subclass = Layer
+        else:
+            subclass = cls.subclasses[json['class_name']]
         if subclass.from_json.__qualname__ != Layer.from_json.__qualname__:
             # Subclass has overwritten `from_json`, use that method instead.
             layer = subclass.from_json()
