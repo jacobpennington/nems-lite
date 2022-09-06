@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 
-from nems.layers.filter import FiniteImpulseResponse
+from nems.layers.filter import FiniteImpulseResponse, PoleZeroFIR
 
 
 def test_constructor():
@@ -50,3 +50,19 @@ class TestEvaluate:
         # Rank dimension should be squeezed out, but outputs of spectrogram
         # should be preserved
         assert no_outputs_out.shape == (time, spectral)
+
+    def test_pole_zero(self, spectrogram):
+        time, spectral = spectrogram.shape
+        fir_no_outputs = PoleZeroFIR(
+            shape=(15, spectral), n_poles=3, n_zeros=1, fs=100
+            )
+        out = fir_no_outputs.evaluate(spectrogram)
+        assert out.shape == (time, 1)
+
+        # pretend spectrogram has an output dimension, rank 1
+        spectrogram_with_outputs = spectrogram.reshape(time, 1, spectral)
+        fir_with_outputs = PoleZeroFIR(
+            shape=(15, 1, spectral), n_poles=2, n_zeros=2, fs=10
+        )
+        out2 = fir_with_outputs.evaluate(spectrogram_with_outputs)
+        assert out2.shape == (time, spectral)
