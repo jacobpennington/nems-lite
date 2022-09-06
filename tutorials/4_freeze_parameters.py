@@ -1,4 +1,4 @@
-"""Shows how to freeze module parameters in a multi-step fitting process."""
+"""Shows how to freeze Layer parameters in a multi-step fitting process."""
 
 import numpy as np
 

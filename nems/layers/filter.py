@@ -1,9 +1,10 @@
 import numpy as np
 import scipy.signal
+from scipy import interpolate
 
 from .base import Layer, Phi, Parameter, require_shape
 from nems.registry import layer
-from nems.distributions import Normal
+from nems.distributions import Normal, HalfNormal
 from nems.tools.arrays import broadcast_axes
 
 
@@ -197,17 +198,23 @@ class FiniteImpulseResponse(Layer):
         
         """
         kwargs = {}
+        fir_class = FiniteImpulseResponse
 
         options = keyword.split('.')
         for op in options:
             if ('x' in op) and (op[0].isdigit()):
                 dims = op.split('x')
                 kwargs['shape'] = tuple([int(d) for d in dims])
+            if op.startswith('p') and op[1].isdigit():
+                # Pole-zero parameterization
+                fir_class = PoleZeroFIR
+                fs_idx = op.index('fs')
+                zeros_idx = op.index('z')
+                kwargs['n_poles'] = int(op[1:zeros_idx])
+                kwargs['n_zeros'] = int(op[zeros_idx+1:fs_idx])
+                kwargs['fs'] = int(op[fs_idx+2:])
 
-        if 'shape' not in kwargs:
-            raise ValueError("FIR requires a shape, ex: `fir.4x25`.")
-
-        fir = FIR(**kwargs)
+        fir = fir_class(**kwargs)
 
         return fir
     
@@ -421,3 +428,92 @@ class FIR(FiniteImpulseResponse):
     pass
 class STRF(FiniteImpulseResponse):
     pass
+
+
+class PoleZeroFIR(FiniteImpulseResponse):
+
+    def __init__(self, n_poles, n_zeros, fs, **kwargs):
+        """TODO: docs.
+        
+        TODO: Possible to remove need for sampling rate?
+        
+        """
+        self.n_poles = n_poles
+        self.n_zeros = n_zeros
+        self.fs = fs
+        require_shape(self, kwargs, minimum_ndim=2, maximum_ndim=3)
+        super().__init__(**kwargs)
+
+    def initial_parameters(self):
+        """TODO: docs."""
+
+        # TODO: explain choice of priors
+        rank = self.shape[1]
+        if len(self.shape) == 3:
+            n_filters = self.shape[2]
+        else:
+            n_filters = 1
+        pole_set = np.array([[[0.8, -0.4, 0.1, 0.0, 0]]])[..., :self.n_poles]
+        zero_set = np.array([[[0.1,  0.1, 0.1, 0.1, 0]]])[..., :self.n_zeros]
+
+        poles_prior = Normal(
+            mean = pole_set.repeat(rank, 0).repeat(n_filters, 1),
+            sd = np.ones((rank, n_filters, self.n_poles))*0.3,
+            )
+        zeros_prior = Normal(
+            mean = zero_set.repeat(rank, 0).repeat(n_filters, 1),
+            sd = np.ones((rank, n_filters, self.n_zeros))*0.2,
+            )
+        delays_prior = HalfNormal(sd = np.ones((rank, n_filters))*0.02)
+        gains_prior = Normal(
+            mean = np.zeros((rank, n_filters))+0.1,
+            sd = np.ones((rank, n_filters))*0.2
+            )
+
+        poles = Parameter('poles', shape=(rank, n_filters, self.n_poles),
+                          prior=poles_prior, bounds=(-1, 1))
+        zeros = Parameter('zeros', shape=(rank, n_filters, self.n_zeros),
+                          prior=zeros_prior, bounds=(-1, 1))
+        # TODO: what do the delays do exactly?
+        delays = Parameter('delays', shape=(rank, n_filters),
+                           prior=delays_prior, bounds=(0, np.inf))
+        gains = Parameter('gains', shape=(rank, n_filters),
+                          prior=gains_prior)
+
+        return Phi(poles, zeros, delays, gains)
+
+    @property
+    def coefficients(self):
+        """TODO: docs."""
+        poles, zeros, delays, gains = self.get_parameter_values()
+
+        n_taps, rank = self.shape[:2]
+        if len(self.shape) == 2:
+            n_filters = 1
+        else:
+            n_filters = self.shape[-1]
+
+        coefficients = np.zeros((n_taps, rank, n_filters))
+
+        # TODO: can we do this without fs?
+        # TODO: explain why 5*original
+        fs2 = 5*self.fs                      
+
+        for i in range(rank):
+            for j in range(n_filters):
+                # TODO: rename variables, improve documentation.
+                #       still don't really know what this is doing.
+                t = np.arange(0, n_taps*5 + 1) / fs2
+                h = scipy.signal.ZerosPolesGain(
+                    zeros[i,j], poles[i,j], gains[i,j], dt=1/fs2
+                    )
+                tout, ir = scipy.signal.dimpulse(h, t=t)
+                f = interpolate.interp1d(tout, ir[0][:,0], bounds_error=False,
+                                         fill_value=0)
+
+                tnew = np.arange(0, n_taps)/self.fs - delays[i,j] + 1/self.fs
+                coefficients[:, i, j] = f(tnew)
+
+        return coefficients
+
+    # TODO: as_tensorflow_layer

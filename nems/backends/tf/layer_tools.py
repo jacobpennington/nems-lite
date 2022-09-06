@@ -9,7 +9,7 @@ class NemsKerasLayer(Layer):
     def __init__(self, nems_layer, new_values=None, new_bounds=None,
                  regularizer=None, *args, **kwargs):
         """TODO: docs."""
-        # Don't pass 'inputs' to Keras Layer constructor. Will still be in here
+        # Don't pass 'input_shape' to Keras Layer constructor. Will still be in here
         # if `nems_layer.as_tensorflow_layer` didn't use it.
         _ = kwargs.pop('input_shape', None)
         super().__init__(name=nems_layer.name, *args, **kwargs)
