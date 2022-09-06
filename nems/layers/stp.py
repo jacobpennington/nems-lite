@@ -36,8 +36,8 @@ class ShortTermPlasticity(Layer):
         umean = np.full(shape=self.shape, fill_value=0.1)
         uprior = HalfNormal(umean)
 
-        tau_bounds = (0, np.inf)
-        u_bounds = (0, np.inf)
+        tau_bounds = (0.0001, np.inf)
+        u_bounds = (1e-6, np.inf)
 
         u = Parameter('u', shape=self.shape, prior=uprior, bounds=u_bounds)
         tau = Parameter('tau', shape=self.shape, prior=tauprior, bounds=tau_bounds)
@@ -236,6 +236,7 @@ class ShortTermPlasticity(Layer):
 
                 s = inputs.shape
                 tstim = tf.where(tf.math.is_nan(inputs), _zero, inputs)
+                tstim = tf.nn.relu(tstim)
 
                 if parent_x0 is not None:  # x0 should be tf variable to avoid retraces
                     # TODO: is this expanding along the right dim? tstim dims: (None, time, chans)
