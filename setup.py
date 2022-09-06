@@ -3,7 +3,11 @@ from setuptools import find_packages, setup
 NAME = 'NEMS'
 
 VERSION = '0.0.1a'
-GENERAL_REQUIRES = ['numpy', 'scipy', 'matplotlib']
+GENERAL_REQUIRES = [
+    'numpy==1.21.5',
+    'scipy==1.9.0',
+    'matplotlib==3.5.2',
+    ]
 # TODO: pycharm also requires tornado? Or was this a glitch?
 # TODO: .ipynb files require jupyter, best way to specify this?
 #       probably in EXTRAS, but which package specifically?
@@ -12,7 +16,6 @@ EXTRAS_REQUIRES = {
     # TODO: turn some of these back on, temporarily disabled for testing.
     # 'docs': ['sphinx', 'sphinx_rtd_theme', 'pygments-enaml', 'nbsphinx', 
     #          'pandoc', 'IPython', 'sphinx_copybutton'],
-    # 'nwb': ['allensdk'],
     # 'tensorflow': ['tensorflow==2.2', 'tensorboard'],
     # 'tests': ['pytest', 'pytest-benchmark'],
 }

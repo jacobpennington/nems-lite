@@ -1,3 +1,5 @@
+import importlib
+
 import pytest
 import numpy as np
 
@@ -116,9 +118,40 @@ class TestEvaluate:
         assert out1[DataSet.default_input].shape == (1, time, spectral)
 
 
+# Just for basic syntax. Detailed fit tests should go with backends if testing
+# different implementations, layers if testing fit behavior for specific layers.
 def test_fit(spectrogram, response, spectrogram_with_samples,
              response_with_samples):
-    pass  # TODO
+    model = Model.from_keywords(f'wc.18x2-fir.15x2-dexp.1')
+    scipy_model = model.fit(
+        spectrogram, response, backend='scipy',
+        fitter_options={'options': {'ftol': 1e2, 'maxiter': 2}}
+        )
+    scipy_prediction = scipy_model.predict(spectrogram)
+    # This can bee false when broadcasting, but should be true here.
+    assert scipy_prediction.shape == response.shape
+
+    scipy_model_b = model.fit(
+        spectrogram_with_samples, response_with_samples, backend='scipy',
+        batch_size=None, fitter_options={'options': {'ftol': 1e2, 'maxiter': 2}}
+        )
+    scipy_prediction_b = scipy_model_b.predict(spectrogram_with_samples,
+                                               batch_size=None)
+    assert scipy_prediction_b.shape == response_with_samples.shape
+
+    # Only test TF fit if installed.
+    if importlib.util.find_spec('tensorflow') is not None:
+        pass
+        # TODO: This doesn't seem to work? Looks like TF might have to be
+        #       tested separately due to how graph construction works.
+        # tf_model = model.fit(
+        #     spectrogram, response, backend='tf',
+        #     fitter_options={'epochs': 2, 'early_stopping_tolerance': 1e2}
+        # )
+        # nems_prediction = tf_model.predict(spectrogram)
+        # tf_prediction = tf_model.backend.predict(spectrogram)
+        # assert np.allclose(nems_prediction, tf_model, atol=1e-6)
+        # assert tf_prediction.shape == scipy_prediction.shape
 
 
 def test_freeze_layers(spectrogram):
