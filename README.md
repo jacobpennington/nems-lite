@@ -1,3 +1,8 @@
+# The main repository URL has moved!
+As of September 7th 2022, further development will happen in the repo found at:
+
+https://github.com/lbhb/nems
+
 # nems-lite
 WIP refactor of lbhb/NEMS and lbhb/nems_db
 
